@@ -5,6 +5,7 @@ export interface RequestUser {
   role: UserRole;
   email?: string;
   fullName?: string;
+  agency?: string;
 }
 
 export interface AuthenticatedRequest {

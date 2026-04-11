@@ -5,6 +5,7 @@ export interface JwtPayload {
   email: string;
   fullName: string;
   role: UserRole;
+  agency?: string;
 }
 
 export interface LoginDto {
@@ -19,6 +20,7 @@ export interface IdentityLinks {
   propertyIds?: string[];
   leaseId?: string;
   agency?: string;
+  agentCode?: string;
 }
 
 export interface ProvisionUserDto {

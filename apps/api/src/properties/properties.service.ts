@@ -34,6 +34,15 @@ const CITY_COORDS: Record<string, [number, number]> = {
 export class PropertiesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private extractAgency(identityLinks: unknown): string | undefined {
+    if (!identityLinks || typeof identityLinks !== "object" || Array.isArray(identityLinks)) {
+      return undefined;
+    }
+
+    const value = identityLinks as Record<string, unknown>;
+    return typeof value.agency === "string" ? value.agency : undefined;
+  }
+
   private normalizeText(value: string): string {
     return value
       .normalize("NFD")
@@ -174,6 +183,10 @@ export class PropertiesService {
 
   findAll(filters: PropertyFilters): PropertyEntity[] {
     return this.properties.filter((property) => {
+      if (filters.propertyIds?.length && !filters.propertyIds.includes(property.id) && !filters.propertyIds.includes(property.reference)) {
+        return false;
+      }
+
       if (filters.city && property.city.toLowerCase() !== filters.city.toLowerCase()) {
         return false;
       }
@@ -195,8 +208,18 @@ export class PropertiesService {
   }
 
   async findAllDb(filters: PropertyFilters): Promise<PropertyEntity[]> {
+    const propertyScope = filters.propertyIds?.length
+      ? {
+          OR: [
+            { id: { in: filters.propertyIds } },
+            { reference: { in: filters.propertyIds } },
+          ],
+        }
+      : undefined;
+
     const rows = await this.prisma.property.findMany({
       where: {
+        ...(propertyScope ?? {}),
         city: filters.city ? { equals: filters.city, mode: "insensitive" } : undefined,
         propertyType: filters.propertyType,
         ownerId: filters.ownerId,
@@ -234,8 +257,38 @@ export class PropertiesService {
   }
 
   async getAgentPropertyKeysDb(agentId: string): Promise<string[]> {
+    const currentAgent = await this.prisma.user.findUnique({
+      where: { id: agentId },
+      select: {
+        id: true,
+        role: true,
+        identityLinks: true,
+      },
+    });
+
+    const agency = this.extractAgency(currentAgent?.identityLinks);
+    let scopedAgentIds = [agentId];
+
+    if (currentAgent?.role === "agent" && agency) {
+      const allAgents = await this.prisma.user.findMany({
+        where: { role: "agent" },
+        select: {
+          id: true,
+          identityLinks: true,
+        },
+      });
+
+      const sameAgencyAgents = allAgents
+        .filter((candidate) => this.extractAgency(candidate.identityLinks) === agency)
+        .map((candidate) => candidate.id);
+
+      if (sameAgencyAgents.length > 0) {
+        scopedAgentIds = sameAgencyAgents;
+      }
+    }
+
     const rows = await this.prisma.property.findMany({
-      where: { agentId },
+      where: { agentId: { in: scopedAgentIds } },
       select: { id: true, reference: true },
     });
 

@@ -12,11 +12,29 @@ export class PropertiesController {
   @Get()
   @Roles("admin", "agent", "proprietaire")
   async findAll(@Query() query: PropertyFilters, @CurrentUser() user?: RequestUser) {
-    const filters = user?.role === "proprietaire"
-      ? { ...query, ownerId: user.id }
-      : user?.role === "agent"
-        ? { ...query, agentId: user.id }
-        : query;
+    const filters = await (async () => {
+      if (user?.role === "proprietaire") {
+        return { ...query, ownerId: user.id };
+      }
+
+      if (user?.role === "agent") {
+        const propertyIds = await (async () => {
+          try {
+            if (await this.propertiesService.isDbAvailable()) {
+              return await this.propertiesService.getAgentPropertyKeysDb(user.id);
+            }
+          } catch {
+            // fallback mémoire
+          }
+
+          return this.propertiesService.getAgentPropertyKeys(user.id);
+        })();
+
+        return { ...query, propertyIds };
+      }
+
+      return query;
+    })();
 
     try {
       if (!(await this.propertiesService.isDbAvailable())) {
@@ -49,7 +67,21 @@ export class PropertiesController {
     }
 
     if (user?.role === "agent" && property.agentId !== user.id) {
-      throw new ForbiddenException("Accès interdit hors portefeuille agent");
+      const agentPropertyKeys = await (async () => {
+        try {
+          if (await this.propertiesService.isDbAvailable()) {
+            return await this.propertiesService.getAgentPropertyKeysDb(user.id);
+          }
+        } catch {
+          // fallback mémoire
+        }
+
+        return this.propertiesService.getAgentPropertyKeys(user.id);
+      })();
+
+      if (!agentPropertyKeys.includes(property.id) && !agentPropertyKeys.includes(property.reference)) {
+        throw new ForbiddenException("Accès interdit hors portefeuille agence");
+      }
     }
 
     return property;

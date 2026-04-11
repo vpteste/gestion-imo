@@ -19,7 +19,7 @@ export class AuthController {
   }
 
   @Get("users")
-  @Roles("admin", "agent")
+  @Roles("admin")
   users() {
     return this.authService.listUsers();
   }

@@ -17,6 +17,7 @@ type ManagedUser = {
     propertyIds?: string[];
     leaseId?: string;
     agency?: string;
+    agentCode?: string;
   };
 };
 
@@ -39,6 +40,7 @@ export default function GestionUtilisateursPage() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [lastActivationToken, setLastActivationToken] = useState<string | null>(null);
+  const [lastEmailError, setLastEmailError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<"tous" | ManagedRole>("tous");
@@ -172,12 +174,16 @@ export default function GestionUtilisateursPage() {
     event.preventDefault();
     setError(null);
     setLastActivationToken(null);
+    setLastEmailError(null);
 
     const identityLinks: Record<string, unknown> =
       role === "proprietaire"
           ? { propertyIds: [buildAutoId("PROP", fullName)] }
           : role === "agent"
-            ? { agency: `AGENCE-${buildAutoId("AG", fullName)}` }
+            ? {
+                agency: `AGENCE-${buildAutoId("AG", fullName)}`,
+                agentCode: buildAutoId("AGT", fullName),
+              }
             : {};
 
     try {
@@ -201,6 +207,7 @@ export default function GestionUtilisateursPage() {
 
       const payload = await res.json();
       setLastActivationToken(payload?.activation?.token ?? null);
+      setLastEmailError(payload?.activation?.emailError ?? null);
       setEmail("");
       setFullName("");
       setShowCreateForm(false);
@@ -402,6 +409,7 @@ export default function GestionUtilisateursPage() {
       chunks.push(`Biens: ${refs.join(", ")}`);
     }
     if (identityLinks.agency) chunks.push(`Agence: ${identityLinks.agency}`);
+    if (identityLinks.agentCode) chunks.push(`Identifiant agent: ${identityLinks.agentCode}`);
 
     if (chunks.length === 0) {
       return <span className="text-slate-300">-</span>;
@@ -492,7 +500,7 @@ export default function GestionUtilisateursPage() {
             <option value="proprietaire">proprietaire</option>
           </select>
           <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 md:col-span-2">
-            Les identifiants metier (propertyId, leaseId, agence) sont generes automatiquement a partir des initiales.
+            Les identifiants metier (agence et identifiant agent) sont generes automatiquement.
           </p>
           <button type="submit" className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100">Provisionner</button>
         </form>
@@ -500,8 +508,9 @@ export default function GestionUtilisateursPage() {
 
         {lastActivationToken && (
           <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-            <p className="font-semibold">Token d&apos;activation (dev)</p>
-            <p className="mt-1 break-all">{lastActivationToken}</p>
+            <p className="font-semibold">Token d&apos;activation{lastEmailError ? " — email non envoyé" : " — email envoyé"}</p>
+            {lastEmailError && <p className="mt-1 text-red-600 text-xs">⚠ {lastEmailError} — Partagez le lien ci-dessous manuellement.</p>}
+            <p className="mt-1 break-all font-mono text-xs">{lastActivationToken}</p>
             <button
               type="button"
               onClick={() => void copyActivationToken()}

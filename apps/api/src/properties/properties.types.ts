@@ -32,6 +32,7 @@ export interface PropertyFilters {
   propertyType?: PropertyType;
   ownerId?: string;
   agentId?: string;
+  propertyIds?: string[];
 }
 
 export interface PropertyEntity {

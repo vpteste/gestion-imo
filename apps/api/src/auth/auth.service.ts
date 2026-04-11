@@ -41,6 +41,15 @@ function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function normalizeAgencyLabel(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .toUpperCase();
+}
+
 function sanitizeLegacyIdentityLinks(users: DemoUser[]): boolean {
   let changed = false;
 
@@ -103,6 +112,7 @@ export class AuthService {
     const propertyId = typeof value.propertyId === "string" ? value.propertyId : undefined;
     const leaseId = typeof value.leaseId === "string" ? value.leaseId : undefined;
     const agency = typeof value.agency === "string" ? value.agency : undefined;
+    const agentCode = typeof value.agentCode === "string" ? value.agentCode : undefined;
     const propertyIds = Array.isArray(value.propertyIds)
       ? value.propertyIds.filter((item): item is string => typeof item === "string")
       : undefined;
@@ -111,8 +121,56 @@ export class AuthService {
       propertyId,
       leaseId,
       agency,
+      agentCode,
       propertyIds,
     };
+  }
+
+  private buildAgentCode(fullName: string): string {
+    const initials = fullName
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .split(/[^A-Za-z0-9]+/)
+      .filter(Boolean)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("")
+      .slice(0, 3)
+      .padEnd(2, "X");
+    const stamp = new Date().toISOString().slice(2, 10).replace(/-/g, "");
+    const rand = Math.floor(100 + Math.random() * 900);
+    return `AGT-${initials}-${stamp}-${rand}`;
+  }
+
+  private normalizeIdentityLinks(role: UserRole, identityLinks: IdentityLinks | undefined, fullName: string): IdentityLinks | undefined {
+    if (role === "agent") {
+      const agencySource = identityLinks?.agency?.trim() || `AGENCE-${fullName}`;
+      const agency = normalizeAgencyLabel(agencySource);
+      const agentCode = identityLinks?.agentCode?.trim() || this.buildAgentCode(fullName);
+
+      return {
+        agency,
+        agentCode,
+      };
+    }
+
+    if (role === "proprietaire") {
+      const propertyIds = identityLinks?.propertyIds
+        ?.map((item) => item.trim())
+        .filter(Boolean);
+
+      return {
+        propertyIds: propertyIds && propertyIds.length > 0 ? [...new Set(propertyIds)] : undefined,
+      };
+    }
+
+    if (role === "locataire") {
+      return {
+        propertyId: identityLinks?.propertyId,
+        leaseId: identityLinks?.leaseId,
+      };
+    }
+
+    return undefined;
   }
 
   private async ensureUsersLoaded(): Promise<void> {
@@ -163,6 +221,10 @@ export class AuthService {
 
     if (role === "proprietaire" && (!identityLinks?.propertyIds || identityLinks.propertyIds.length === 0)) {
       throw new BadRequestException("Un proprietaire doit etre lie a au moins un bien");
+    }
+
+    if (role === "agent" && (!identityLinks?.agency || !identityLinks?.agentCode)) {
+      throw new BadRequestException("Un agent doit etre lie a une agence avec un identifiant agent");
     }
   }
 
@@ -216,6 +278,7 @@ export class AuthService {
           role: true,
           passwordHash: true,
           status: true,
+          identityLinks: true,
         },
       });
 
@@ -247,11 +310,13 @@ export class AuthService {
         });
       }
 
+      const identityLinks = this.parseIdentityLinks(dbUser.identityLinks);
       const payload: JwtPayload = {
         sub: dbUser.id,
         email: dbUser.email,
         fullName: dbUser.fullName,
         role: dbUser.role,
+        agency: identityLinks?.agency,
       };
 
       return {
@@ -261,6 +326,7 @@ export class AuthService {
           email: dbUser.email,
           fullName: dbUser.fullName,
           role: dbUser.role,
+          agency: identityLinks?.agency,
         },
       };
     } catch (error) {
@@ -301,6 +367,7 @@ export class AuthService {
       email: user.email,
       fullName: user.fullName,
       role: user.role,
+      agency: user.identityLinks?.agency,
     };
 
     return {
@@ -310,6 +377,7 @@ export class AuthService {
         email: user.email,
         fullName: user.fullName,
         role: user.role,
+        agency: user.identityLinks?.agency,
       },
     };
   }
@@ -326,7 +394,8 @@ export class AuthService {
       throw new BadRequestException("Email obligatoire");
     }
 
-    this.validateIdentityLinks(dto.role, dto.identityLinks);
+    const normalizedIdentityLinks = this.normalizeIdentityLinks(dto.role, dto.identityLinks, dto.fullName);
+    this.validateIdentityLinks(dto.role, normalizedIdentityLinks);
 
     const activationToken = randomBytes(24).toString("hex");
     const activationTokenExpiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
@@ -351,7 +420,7 @@ export class AuthService {
           fullName: dto.fullName.trim(),
           role: dto.role,
           status: "pending",
-          identityLinks: dto.identityLinks as unknown as object,
+          identityLinks: normalizedIdentityLinks as unknown as object,
           activationToken,
           activationTokenExpiresAt: new Date(activationTokenExpiresAt),
         },
@@ -365,12 +434,18 @@ export class AuthService {
         },
       });
 
-      const emailDispatchId = await this.sendActivationEmail({
-        email: createdDbUser.email,
-        fullName: createdDbUser.fullName,
-        activationToken,
-        activationTokenExpiresAt,
-      });
+      let emailDispatchId: string | undefined;
+      let emailError: string | undefined;
+      try {
+        emailDispatchId = await this.sendActivationEmail({
+          email: createdDbUser.email,
+          fullName: createdDbUser.fullName,
+          activationToken,
+          activationTokenExpiresAt,
+        });
+      } catch (emailErr) {
+        emailError = emailErr instanceof Error ? emailErr.message : "Erreur envoi email";
+      }
 
       return {
         user: {
@@ -383,8 +458,9 @@ export class AuthService {
         },
         activation: {
           expiresAt: activationTokenExpiresAt,
-          token: process.env.NODE_ENV === "production" ? undefined : activationToken,
+          token: activationToken,
           emailPreview: emailDispatchId,
+          emailError,
         },
       };
     } catch (error) {
@@ -405,26 +481,34 @@ export class AuthService {
       fullName: dto.fullName.trim(),
       role: dto.role,
       status: "pending",
-      identityLinks: dto.identityLinks,
+      identityLinks: normalizedIdentityLinks,
       activationToken,
       activationTokenExpiresAt,
     };
 
     this.users.push(created);
     await this.persistUsers();
-    const emailDispatchId = await this.sendActivationEmail({
-      email: created.email,
-      fullName: created.fullName,
-      activationToken,
-      activationTokenExpiresAt,
-    });
+
+    let emailDispatchId: string | undefined;
+    let emailError: string | undefined;
+    try {
+      emailDispatchId = await this.sendActivationEmail({
+        email: created.email,
+        fullName: created.fullName,
+        activationToken,
+        activationTokenExpiresAt,
+      });
+    } catch (emailErr) {
+      emailError = emailErr instanceof Error ? emailErr.message : "Erreur envoi email";
+    }
 
     return {
       user: this.toPublicUser(created),
       activation: {
         expiresAt: created.activationTokenExpiresAt,
-        token: process.env.NODE_ENV === "production" ? undefined : activationToken,
+        token: activationToken,
         emailPreview: emailDispatchId,
+        emailError,
       },
     };
   }
@@ -657,23 +741,29 @@ export class AuthService {
 
   async updateUserRole(userId: string, dto: UpdateUserRoleDto) {
     await this.ensureUsersLoaded();
-    this.validateIdentityLinks(dto.role, dto.identityLinks);
 
     try {
       const existing = await this.prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true },
+        select: { id: true, fullName: true, identityLinks: true },
       });
 
       if (!existing) {
         throw new NotFoundException("Utilisateur introuvable");
       }
 
+      const normalizedIdentityLinks = this.normalizeIdentityLinks(
+        dto.role,
+        dto.identityLinks ?? this.parseIdentityLinks(existing.identityLinks),
+        existing.fullName,
+      );
+      this.validateIdentityLinks(dto.role, normalizedIdentityLinks);
+
       const updated = await this.prisma.user.update({
         where: { id: userId },
         data: {
           role: dto.role,
-          identityLinks: dto.identityLinks as unknown as object,
+          identityLinks: normalizedIdentityLinks as unknown as object,
         },
         select: {
           id: true,
@@ -704,8 +794,11 @@ export class AuthService {
       throw new NotFoundException("Utilisateur introuvable");
     }
 
+    const normalizedIdentityLinks = this.normalizeIdentityLinks(dto.role, dto.identityLinks ?? user.identityLinks, user.fullName);
+    this.validateIdentityLinks(dto.role, normalizedIdentityLinks);
+
     user.role = dto.role;
-    user.identityLinks = dto.identityLinks;
+    user.identityLinks = normalizedIdentityLinks;
     await this.persistUsers();
     return this.toPublicUser(user);
   }
