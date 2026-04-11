@@ -3,13 +3,15 @@ services:
     name: gestion-imo-api
     env: node
     plan: free
-    buildCommand: npm ci --ignore-scripts --workspace @gestion/shared --workspace @gestion/database --workspace api && npx prisma generate --schema packages/database/prisma/schema.prisma && npm run build -w packages/shared && npm run build -w apps/api
+    buildCommand: npm ci --include=dev --ignore-scripts --workspace @gestion/shared --workspace @gestion/database --workspace api && npx prisma generate --schema packages/database/prisma/schema.prisma && npm run build -w packages/shared && npm run build -w apps/api
     startCommand: node apps/api/dist/main.js
     autoDeploy: true
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NPM_CONFIG_PRODUCTION
+        value: "false"
       - key: CORS_ORIGIN
         sync: false
       - key: DATABASE_URL
