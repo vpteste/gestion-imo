@@ -31,6 +31,15 @@ type Tenant = {
   leaseReference?: string;
 };
 
+type ActivityLog = {
+  id: string;
+  timestamp: string;
+  method: string;
+  path: string;
+  statusCode: number;
+  durationMs?: number;
+};
+
 const API_URL = process.env.NODE_ENV === "production" ? "/api" : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001");
 
 export default function GestionUtilisateursPage() {
@@ -39,8 +48,13 @@ export default function GestionUtilisateursPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [lastActivationToken, setLastActivationToken] = useState<string | null>(null);
-  const [lastEmailError, setLastEmailError] = useState<string | null>(null);
+  const [provisionResult, setProvisionResult] = useState<{
+    user: { id: string; email: string; fullName: string; role: string; identityLinks?: ManagedUser["identityLinks"] };
+    activation: { token: string; expiresAt: string; emailError?: string; emailPreview?: string };
+  } | null>(null);
+  const [agentActivityUserId, setAgentActivityUserId] = useState<string | null>(null);
+  const [agentLogs, setAgentLogs] = useState<ActivityLog[]>([]);
+  const [agentLogsLoading, setAgentLogsLoading] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<"tous" | ManagedRole>("tous");
@@ -56,7 +70,7 @@ export default function GestionUtilisateursPage() {
     propertyIdsCsv: "",
     agency: "",
   });
-  const [copyFeedback, setCopyFeedback] = useState<"idle" | "done" | "error">("idle");
+  const [copyFeedback, setCopyFeedback] = useState<"idle" | "done" | "error">("idle"); // utilisé dans la modale provision
   const [propertyReferenceByKey, setPropertyReferenceByKey] = useState<Record<string, string>>({});
   const [leaseReferenceById, setLeaseReferenceById] = useState<Record<string, string>>({});
 
@@ -173,8 +187,7 @@ export default function GestionUtilisateursPage() {
   async function provision(event: FormEvent) {
     event.preventDefault();
     setError(null);
-    setLastActivationToken(null);
-    setLastEmailError(null);
+    setProvisionResult(null);
 
     const identityLinks: Record<string, unknown> =
       role === "proprietaire"
@@ -205,9 +218,8 @@ export default function GestionUtilisateursPage() {
         throw new Error(`Provisioning impossible (${res.status})`);
       }
 
-      const payload = await res.json();
-      setLastActivationToken(payload?.activation?.token ?? null);
-      setLastEmailError(payload?.activation?.emailError ?? null);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      setProvisionResult(await res.json());
       setEmail("");
       setFullName("");
       setShowCreateForm(false);
@@ -301,18 +313,30 @@ export default function GestionUtilisateursPage() {
     }
   }
 
-  async function copyActivationToken() {
-    if (!lastActivationToken) {
-      return;
-    }
-
+  async function copyToClipboard(text: string) {
     try {
-      await navigator.clipboard.writeText(lastActivationToken);
+      await navigator.clipboard.writeText(text);
       setCopyFeedback("done");
       setTimeout(() => setCopyFeedback("idle"), 1400);
     } catch {
       setCopyFeedback("error");
       setTimeout(() => setCopyFeedback("idle"), 1400);
+    }
+  }
+
+  async function viewAgentActivity(agentUser: ManagedUser) {
+    setAgentActivityUserId(agentUser.id);
+    setAgentLogs([]);
+    setAgentLogsLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/activity-logs?actorId=${agentUser.id}&limit=100`, { headers: apiHeaders });
+      if (res.ok) {
+        setAgentLogs((await res.json()) as ActivityLog[]);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setAgentLogsLoading(false);
     }
   }
 
@@ -506,21 +530,6 @@ export default function GestionUtilisateursPage() {
         </form>
         )}
 
-        {lastActivationToken && (
-          <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-            <p className="font-semibold">Token d&apos;activation{lastEmailError ? " — email non envoyé" : " — email envoyé"}</p>
-            {lastEmailError && <p className="mt-1 text-red-600 text-xs">⚠ {lastEmailError} — Partagez le lien ci-dessous manuellement.</p>}
-            <p className="mt-1 break-all font-mono text-xs">{lastActivationToken}</p>
-            <button
-              type="button"
-              onClick={() => void copyActivationToken()}
-              className="mt-2 rounded border border-amber-300 bg-white/70 px-2 py-1 text-xs font-semibold text-amber-900 hover:bg-white"
-            >
-              {copyFeedback === "done" ? "Copie" : copyFeedback === "error" ? "Echec copie" : "Copier"}
-            </button>
-          </section>
-        )}
-
         {error && <p className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</p>}
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -613,6 +622,15 @@ export default function GestionUtilisateursPage() {
                               Editer couplage
                             </button>
                           )}
+                          {canAdmin && user.role === "agent" && (
+                            <button
+                              type="button"
+                              onClick={() => void viewAgentActivity(user)}
+                              className="rounded border border-violet-200 bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700 hover:bg-violet-100"
+                            >
+                              Voir activit&eacute;s
+                            </button>
+                          )}
                           {canAdmin && user.status !== "suspended" && user.id !== currentUser?.id && (
                             <button
                               onClick={() => void suspendUser(user.id)}
@@ -681,6 +699,166 @@ export default function GestionUtilisateursPage() {
           </div>
         </section>
       </div>
+
+      {/* ── Modale: IDs agent après provisionnement ─────────────────── */}
+      {provisionResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100">
+                <span className="text-lg">✓</span>
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Compte créé avec succès</h2>
+                <p className="text-xs text-slate-500">Transmettez ces identifiants à l&apos;agent pour activation</p>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-2 rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Nom complet</span>
+                <span className="font-semibold text-slate-900">{provisionResult.user.fullName}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Email</span>
+                <span className="font-mono text-xs text-slate-700">{provisionResult.user.email}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Rôle</span>
+                <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-xs font-semibold text-cyan-700 capitalize">{provisionResult.user.role}</span>
+              </div>
+              {provisionResult.user.identityLinks?.agency && (
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Agence</span>
+                  <span className="font-mono text-xs font-semibold text-slate-900">{provisionResult.user.identityLinks.agency}</span>
+                </div>
+              )}
+              {provisionResult.user.identityLinks?.agentCode && (
+                <div className="flex items-center justify-between rounded-lg bg-indigo-50 px-3 py-2">
+                  <span className="font-semibold text-indigo-700">Identifiant agent</span>
+                  <span className="font-mono text-sm font-bold text-indigo-900">{provisionResult.user.identityLinks.agentCode}</span>
+                </div>
+              )}
+              {provisionResult.user.identityLinks?.propertyIds?.length && (
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-slate-500">Biens</span>
+                  <span className="text-right font-mono text-xs text-slate-700">{provisionResult.user.identityLinks.propertyIds.join(", ")}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-amber-800">
+                  Token d&apos;activation &nbsp;
+                  {provisionResult.activation.emailError
+                    ? <span className="text-red-600">⚠ email non envoyé</span>
+                    : <span className="text-green-700">✓ email envoyé</span>}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void copyToClipboard(provisionResult.activation.token)}
+                  className="rounded border border-amber-300 bg-white/80 px-2 py-0.5 text-xs font-semibold text-amber-900 hover:bg-white"
+                >
+                  {copyFeedback === "done" ? "Copié ✓" : copyFeedback === "error" ? "Echec" : "Copier"}
+                </button>
+              </div>
+              {provisionResult.activation.emailError && (
+                <p className="mt-1 text-xs text-red-600">{provisionResult.activation.emailError} — Partagez le token manuellement.</p>
+              )}
+              <p className="mt-2 break-all rounded bg-white/60 px-2 py-1 font-mono text-xs text-amber-900">{provisionResult.activation.token}</p>
+            </div>
+
+            <p className="mt-3 text-xs text-slate-400">
+              L&apos;agent doit utiliser ce token sur la page <strong>/auth/activate</strong> pour définir son mot de passe et se connecter.
+            </p>
+
+            <div className="mt-5 flex justify-end">
+              <button
+                onClick={() => setProvisionResult(null)}
+                className="rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-indigo-700"
+              >
+                Valider et fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modale: Activités d'un agent ────────────────────────────── */}
+      {agentActivityUserId && (() => {
+        const agentUser = users.find((u) => u.id === agentActivityUserId);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="mx-4 flex w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" style={{ maxHeight: "85vh" }}>
+              <div className="flex items-center justify-between border-b border-slate-200 p-5">
+                <div>
+                  <h2 className="font-bold text-slate-900">Activités de l&apos;agent</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    <span className="font-semibold">{agentUser?.fullName}</span> — {agentUser?.email}
+                    {agentUser?.identityLinks?.agency && <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs">{agentUser.identityLinks.agency}</span>}
+                    {agentUser?.identityLinks?.agentCode && <span className="ml-1 rounded bg-indigo-50 px-1.5 py-0.5 font-mono text-xs text-indigo-700">{agentUser.identityLinks.agentCode}</span>}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setAgentActivityUserId(null)}
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                >
+                  Fermer
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4">
+                {agentLogsLoading ? (
+                  <p className="py-12 text-center text-sm text-slate-500">Chargement des activités...</p>
+                ) : agentLogs.length === 0 ? (
+                  <p className="py-12 text-center text-sm text-slate-400">Aucune activité enregistrée pour cet agent</p>
+                ) : (
+                  <table className="min-w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200">
+                        <th className="py-2 pr-4 text-left font-semibold text-slate-500">Date / Heure</th>
+                        <th className="py-2 pr-4 text-left font-semibold text-slate-500">Méthode</th>
+                        <th className="py-2 pr-4 text-left font-semibold text-slate-500">Endpoint</th>
+                        <th className="py-2 pr-4 text-left font-semibold text-slate-500">Statut</th>
+                        <th className="py-2 text-left font-semibold text-slate-500">Durée</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {agentLogs.map((log) => (
+                        <tr key={log.id} className="hover:bg-slate-50">
+                          <td className="py-2 pr-4 text-slate-600">{new Date(log.timestamp).toLocaleString("fr-FR")}</td>
+                          <td className="py-2 pr-4">
+                            <span className={`rounded px-1.5 py-0.5 font-bold uppercase ${
+                              log.method === "GET" ? "bg-blue-50 text-blue-700"
+                              : log.method === "POST" ? "bg-green-50 text-green-700"
+                              : log.method === "PATCH" || log.method === "PUT" ? "bg-amber-50 text-amber-700"
+                              : "bg-rose-50 text-rose-700"
+                            }`}>{log.method}</span>
+                          </td>
+                          <td className="py-2 pr-4 font-mono text-slate-700">{log.path}</td>
+                          <td className="py-2 pr-4">
+                            <span className={`rounded px-1.5 py-0.5 font-bold ${
+                              log.statusCode < 300 ? "bg-green-50 text-green-700"
+                              : log.statusCode < 500 ? "bg-amber-50 text-amber-700"
+                              : "bg-rose-50 text-rose-700"
+                            }`}>{log.statusCode}</span>
+                          </td>
+                          <td className="py-2 text-slate-400">{log.durationMs != null ? `${log.durationMs}ms` : "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+              <div className="border-t border-slate-100 px-5 py-3 text-xs text-slate-400">
+                {agentLogs.length > 0 && `${agentLogs.length} action(s) — 100 dernières au max`}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
     </main>
   );
 }
