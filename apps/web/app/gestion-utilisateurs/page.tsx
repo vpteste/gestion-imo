@@ -75,6 +75,12 @@ export default function GestionUtilisateursPage() {
     user: { id: string; email: string; fullName: string; role: string; identityLinks?: ManagedUser["identityLinks"] };
     activation: { token: string; expiresAt: string; emailError?: string; emailPreview?: string };
   } | null>(null);
+  const [pendingProvision, setPendingProvision] = useState<{
+    email: string;
+    fullName: string;
+    role: ManagedRole;
+    identityLinks?: ManagedUser["identityLinks"];
+  } | null>(null);
   const [agentActivityUserId, setAgentActivityUserId] = useState<string | null>(null);
   const [agentLogs, setAgentLogs] = useState<ActivityLog[]>([]);
   const [agentLogsLoading, setAgentLogsLoading] = useState(false);
@@ -141,6 +147,26 @@ export default function GestionUtilisateursPage() {
     const stamp = new Date().toISOString().slice(2, 10).replace(/-/g, "");
     const rand = Math.floor(100 + Math.random() * 900);
     return `${prefix}-${initials}-${stamp}-${rand}`;
+  }
+
+  function isValidEmail(value: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+  }
+
+  async function readApiErrorMessage(res: Response, fallback: string): Promise<string> {
+    try {
+      const payload = (await res.json()) as { message?: string | string[] };
+      if (Array.isArray(payload?.message)) {
+        return payload.message.join(" | ");
+      }
+      if (typeof payload?.message === "string" && payload.message.trim()) {
+        return payload.message;
+      }
+    } catch {
+      // ignore
+    }
+
+    return fallback;
   }
 
   async function loadUsers(isRefresh = false) {
@@ -212,6 +238,16 @@ export default function GestionUtilisateursPage() {
     setError(null);
     setProvisionResult(null);
 
+    if (!isValidEmail(email)) {
+      setError("Email invalide. Exemple attendu: nom@domaine.com");
+      return;
+    }
+
+    if (!fullName.trim()) {
+      setError("Nom complet obligatoire");
+      return;
+    }
+
     const identityLinks: Record<string, unknown> =
       role === "proprietaire"
           ? { propertyIds: [buildAutoId("PROP", fullName)] }
@@ -222,6 +258,19 @@ export default function GestionUtilisateursPage() {
               }
             : {};
 
+    setPendingProvision({
+      email: email.trim(),
+      fullName: fullName.trim(),
+      role,
+      identityLinks,
+    });
+  }
+
+  async function confirmProvision() {
+    if (!pendingProvision) {
+      return;
+    }
+
     try {
       const res = await fetchApi("/auth/users/provision", {
         method: "POST",
@@ -230,19 +279,20 @@ export default function GestionUtilisateursPage() {
           ...apiHeaders,
         },
         body: JSON.stringify({
-          email,
-          fullName,
-          role,
-          identityLinks,
+          email: pendingProvision.email,
+          fullName: pendingProvision.fullName,
+          role: pendingProvision.role,
+          identityLinks: pendingProvision.identityLinks,
         }),
       });
 
       if (!res.ok) {
-        throw new Error(`Provisioning impossible (${res.status})`);
+        throw new Error(await readApiErrorMessage(res, `Provisioning impossible (${res.status})`));
       }
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       setProvisionResult(await res.json());
+      setPendingProvision(null);
       setEmail("");
       setFullName("");
       setShowCreateForm(false);
@@ -554,6 +604,37 @@ export default function GestionUtilisateursPage() {
         )}
 
         {error && <p className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</p>}
+
+        {pendingProvision && (
+          <section className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-900">
+            <p className="font-semibold">Validation admin requise avant création</p>
+            <p className="mt-1">Nom: <strong>{pendingProvision.fullName}</strong></p>
+            <p>Email: <strong>{pendingProvision.email}</strong></p>
+            <p>Rôle: <strong>{pendingProvision.role}</strong></p>
+            {pendingProvision.identityLinks?.agency && (
+              <p>Agence: <strong>{pendingProvision.identityLinks.agency}</strong></p>
+            )}
+            {pendingProvision.identityLinks?.agentCode && (
+              <p>Identifiant agent: <strong>{pendingProvision.identityLinks.agentCode}</strong></p>
+            )}
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => void confirmProvision()}
+                className="rounded border border-indigo-300 bg-white px-3 py-1 text-xs font-semibold text-indigo-800 hover:bg-indigo-100"
+              >
+                Valider et créer le compte
+              </button>
+              <button
+                type="button"
+                onClick={() => setPendingProvision(null)}
+                className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                Annuler
+              </button>
+            </div>
+          </section>
+        )}
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">

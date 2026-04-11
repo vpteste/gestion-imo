@@ -41,6 +41,10 @@ function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function isValidEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 function normalizeAgencyLabel(value: string): string {
   return value
     .normalize("NFD")
@@ -392,6 +396,9 @@ export class AuthService {
     const normalizedEmail = normalizeEmail(dto.email);
     if (!normalizedEmail) {
       throw new BadRequestException("Email obligatoire");
+    }
+    if (!isValidEmail(normalizedEmail)) {
+      throw new BadRequestException("Email invalide");
     }
 
     const normalizedIdentityLinks = this.normalizeIdentityLinks(dto.role, dto.identityLinks, dto.fullName);
