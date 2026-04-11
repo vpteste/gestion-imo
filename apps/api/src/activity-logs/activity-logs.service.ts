@@ -81,15 +81,15 @@ export class ActivityLogsService {
           method: ((payload.method as string | undefined) ?? log.actionType).toUpperCase(),
           path,
           statusCode: log.statusCode ?? 200,
-          actorId: log.actorId ?? undefined,
+          actorId: log.actorId,
           actorRole,
           actorEmail: payload.actorEmail as string | undefined,
-          userAgent: log.userAgent ?? undefined,
-          durationMs: log.durationMs ?? undefined,
-          ipAddress: log.ipAddress ?? undefined,
-        } satisfies ActivityLogEntry;
+          userAgent: log.userAgent,
+          durationMs: log.durationMs,
+          ipAddress: log.ipAddress,
+        } as ActivityLogEntry;
       })
-      .filter((entry): entry is ActivityLogEntry => entry !== null);
+      .filter((entry): entry is NonNullable<ActivityLogEntry | null> => entry !== null) as ActivityLogEntry[];
   }
 
   private extractEntityType(path: string): string {

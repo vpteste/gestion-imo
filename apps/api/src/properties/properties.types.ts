@@ -47,7 +47,7 @@ export interface PropertyEntity {
   longitude?: number;
   rentAmount: number;
   chargesAmount: number;
-  ownerId: string;
+  ownerId?: string;
   agentId?: string;
   createdAt: string;
   updatedAt: string;

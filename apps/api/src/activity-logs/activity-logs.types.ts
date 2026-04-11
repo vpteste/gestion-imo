@@ -9,7 +9,7 @@ export interface ActivityLogEntry {
   actorEmail?: string;
   ipAddress?: string;
   userAgent?: string;
-  durationMs?: number;
+  durationMs?: number | undefined;
 }
 
 export interface ActivityLogFilters {
