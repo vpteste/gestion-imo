@@ -26,6 +26,9 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
+# Prisma query engine needs OpenSSL at runtime on Alpine.
+RUN apk add --no-cache openssl
+
 # Manifests (pour npm ci --omit=dev)
 COPY --from=builder /app/package.json          ./package.json
 COPY --from=builder /app/package-lock.json     ./package-lock.json
@@ -38,7 +41,6 @@ COPY --from=builder /app/apps/api/dist                  ./apps/api/dist
 
 # Conserver les artefacts Prisma générés en build, puis nettoyer les dev deps
 COPY --from=builder /app/node_modules ./node_modules
-RUN npm prune --omit=dev --ignore-scripts
 
 # Répertoire de stockage (monté via volume en prod)
 RUN mkdir -p /app/apps/api/storage/contracts /app/apps/api/storage/receipts
