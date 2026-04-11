@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { PrismaService } from "../prisma/prisma.service";
@@ -269,6 +270,11 @@ export class PropertiesService {
     const now = new Date().toISOString();
     const reference = this.ensureReference(dto);
     const fallback = this.cityFallbackCoords(dto.city) ?? this.deterministicCoords(dto.city);
+    const ownerId = dto.ownerId;
+
+    if (!ownerId) {
+      throw new BadRequestException("Le proprietaire est requis");
+    }
 
     const duplicate = this.properties.some((item) => item.reference === reference);
     if (duplicate) {
@@ -288,7 +294,7 @@ export class PropertiesService {
       longitude: fallback[1],
       rentAmount: dto.rentAmount,
       chargesAmount: dto.chargesAmount ?? 0,
-      ownerId: dto.ownerId,
+      ownerId,
       agentId: dto.agentId,
       createdAt: now,
       updatedAt: now,
@@ -300,6 +306,11 @@ export class PropertiesService {
 
   async createDb(dto: CreatePropertyDto): Promise<PropertyEntity> {
     const reference = this.ensureReference(dto);
+    const ownerId = dto.ownerId;
+    if (!ownerId) {
+      throw new BadRequestException("Le proprietaire est requis");
+    }
+
     const geo = await this.geocode({
       addressLine: dto.addressLine,
       city: dto.city,
@@ -308,22 +319,24 @@ export class PropertiesService {
     });
 
     try {
+      const data: Prisma.PropertyCreateInput = {
+        reference,
+        title: dto.title,
+        propertyType: dto.propertyType ?? "apartment",
+        addressLine: dto.addressLine,
+        city: dto.city,
+        postalCode: dto.postalCode,
+        country: dto.country ?? "Cote d'Ivoire",
+        latitude: geo.latitude,
+        longitude: geo.longitude,
+        rentAmount: dto.rentAmount,
+        chargesAmount: dto.chargesAmount ?? 0,
+        owner: { connect: { id: ownerId } },
+        ...(dto.agentId ? { agent: { connect: { id: dto.agentId } } } : {}),
+      };
+
       const row = await this.prisma.property.create({
-        data: {
-          reference,
-          title: dto.title,
-          propertyType: (dto.propertyType ?? "apartment") as any,
-          addressLine: dto.addressLine,
-          city: dto.city,
-          postalCode: dto.postalCode,
-          country: dto.country ?? "Cote d'Ivoire",
-          latitude: geo.latitude,
-          longitude: geo.longitude,
-          rentAmount: dto.rentAmount,
-          chargesAmount: dto.chargesAmount ?? 0,
-          ...(dto.ownerId !== undefined ? { ownerId: dto.ownerId } : {}),
-          ...(dto.agentId !== undefined ? { agentId: dto.agentId } : {}),
-        },
+        data,
       });
 
       return this.toEntity(row);
