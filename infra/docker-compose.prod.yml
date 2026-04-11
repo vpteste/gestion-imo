@@ -1,0 +1,92 @@
+# Docker Compose — Production
+# Usage: docker compose -f infra/docker-compose.prod.yml up -d
+# Prérequis: copier .env.example en .env et renseigner les variables
+
+version: "3.9"
+
+services:
+  # ── Base de données ──────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: gestion_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-gestion}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gestion}
+      POSTGRES_DB:       ${POSTGRES_DB:-gestion}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gestion}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Stockage objets ──────────────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: gestion_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER:     ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"   # API S3
+      - "9001:9001"   # Console UI
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── API NestJS ───────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    container_name: gestion_api
+    restart: unless-stopped
+    environment:
+      NODE_ENV:         production
+      DATABASE_URL:     postgresql://${POSTGRES_USER:-gestion}:${POSTGRES_PASSWORD:-gestion}@postgres:5432/${POSTGRES_DB:-gestion}
+      JWT_SECRET:       ${JWT_SECRET:-changeme_in_production}
+      CORS_ORIGIN:      ${CORS_ORIGIN:-http://localhost:3000}
+    ports:
+      - "3001:3001"
+    volumes:
+      - api_storage:/app/apps/api/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ── Frontend Next.js ─────────────────────────────────────────────────────────
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+    container_name: gestion_web
+    restart: unless-stopped
+    environment:
+      NODE_ENV:              production
+      NEXT_PUBLIC_API_URL:   ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+# ── Volumes persistants ──────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+  minio_data:
+  api_storage:

@@ -1,0 +1,20 @@
+# Exclure tout ce qui n'est pas nécessaire au build Vercel du frontend
+
+# API NestJS - pas déployée sur Vercel
+apps/api/
+
+# Packages database (Prisma CLI, migrations - pas de DB sur Vercel)
+packages/database/
+
+# Fichiers de dev/infra
+infra/
+*.log
+tmp-*.js
+test-*.txt
+test-*.png
+build-output.log
+
+# Dossiers de build locaux
+apps/web/.next/
+apps/web/.next-build/
+apps/api/dist/

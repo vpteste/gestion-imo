@@ -1,0 +1,14 @@
+node_modules/
+.next/
+.next-build/
+dist/
+coverage/
+.env
+.env.*
+npm-debug.log*
+.vercel
+apps/api/storage/
+apps/api/uploads/
+apps/web/test-results/
+apps/web/playwright-report/
+storage/

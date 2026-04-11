@@ -1,0 +1,269 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  admin
+  agent
+  proprietaire
+  locataire
+}
+
+enum AccountStatus {
+  pending
+  active
+  suspended
+}
+
+enum LeaseStatus {
+  draft
+  active
+  termine
+  resilie
+}
+
+enum PaymentStatus {
+  paye
+  retard
+  impaye
+}
+
+enum InspectionType {
+  entree
+  sortie
+}
+
+enum InspectionStatus {
+  planifie
+  realise
+  valide
+}
+
+enum PropertyType {
+  apartment
+  house
+  studio
+  land
+}
+
+enum NotificationType {
+  rappel_echeance
+  quittance
+  alerte_impaye
+  incident
+  etat_des_lieux
+  systeme
+}
+
+model User {
+  id            String            @id @default(cuid())
+  email         String            @unique
+  passwordHash  String
+  fullName      String
+  status        AccountStatus     @default(active)
+  identityLinks Json?
+  activationToken String?
+  activationTokenExpiresAt DateTime?
+  phone         String?
+  dateOfBirth   DateTime?
+  nationalId    String?
+  monthlyIncome Decimal?
+  role          UserRole
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  ownedProperties Property[]      @relation("OwnerProperties")
+  managedProperties Property[]    @relation("AgentProperties")
+  leases        Lease[]           @relation("TenantLeases")
+  sentNotifications Notification[] @relation("SenderNotifications")
+  receivedNotifications Notification[] @relation("ReceiverNotifications")
+  createdInspections Inspection[] @relation("InspectionCreatedBy")
+  uploadedInspectionPhotos InspectionPhoto[] @relation("InspectionPhotoUploadedBy")
+  activityLogs     ActivityLog[]   @relation("ActivityLogActor")
+}
+
+model Property {
+  id               String      @id @default(cuid())
+  reference        String      @unique
+  title            String
+  description      String?
+  propertyType     PropertyType @default(apartment)
+  addressLine      String
+  city             String
+  country          String      @default("France")
+  postalCode       String
+  latitude         Decimal?
+  longitude        Decimal?
+  rentAmount       Decimal
+  chargesAmount    Decimal     @default(0)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  ownerId          String
+  agentId          String?
+  owner            User        @relation("OwnerProperties", fields: [ownerId], references: [id])
+  agent            User?       @relation("AgentProperties", fields: [agentId], references: [id])
+  leases           Lease[]
+  contracts        Contract[]
+  documents        Document[]
+  inspections      Inspection[]
+}
+
+model Lease {
+  id               String      @id @default(cuid())
+  reference        String      @unique
+  propertyId       String
+  tenantId         String
+  startDate        DateTime
+  endDate          DateTime?
+  monthlyRent      Decimal
+  depositAmount    Decimal?
+  status           LeaseStatus @default(draft)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  property         Property    @relation(fields: [propertyId], references: [id])
+  tenant           User        @relation("TenantLeases", fields: [tenantId], references: [id])
+  payments         Payment[]
+  contracts        Contract[]
+  documents        Document[]
+  inspections      Inspection[]
+
+  @@index([propertyId])
+  @@index([tenantId])
+}
+
+model Inspection {
+  id                            String             @id @default(cuid())
+  propertyId                    String
+  leaseId                       String
+  type                          InspectionType
+  status                        InspectionStatus   @default(planifie)
+  notes                         String?
+  entreeNotes                   String?
+  sortieNotes                   String?
+  scheduledAt                   DateTime
+  createdById                   String?
+  signedByTenantAt              DateTime?
+  signedByTenantName            String?
+  signedByTenantSignatureDataUrl String?
+  createdAt                     DateTime           @default(now())
+  updatedAt                     DateTime           @updatedAt
+  property                      Property           @relation(fields: [propertyId], references: [id])
+  lease                         Lease              @relation(fields: [leaseId], references: [id])
+  createdBy                     User?              @relation("InspectionCreatedBy", fields: [createdById], references: [id])
+  photos                        InspectionPhoto[]
+
+  @@index([propertyId])
+  @@index([leaseId])
+  @@index([status])
+}
+
+model InspectionPhoto {
+  id            String         @id @default(cuid())
+  inspectionId  String
+  phase         InspectionType
+  filename      String
+  url           String
+  uploadedAt    DateTime       @default(now())
+  uploadedById  String?
+  inspection    Inspection     @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  uploadedBy    User?          @relation("InspectionPhotoUploadedBy", fields: [uploadedById], references: [id])
+
+  @@index([inspectionId])
+  @@index([phase])
+}
+
+model Contract {
+  id               String      @id @default(cuid())
+  leaseId          String?
+  propertyId       String
+  fileName         String
+  filePath         String
+  mimeType         String
+  version          Int         @default(1)
+  uploadedAt       DateTime    @default(now())
+  uploadedById     String?
+  lease            Lease?      @relation(fields: [leaseId], references: [id])
+  property         Property    @relation(fields: [propertyId], references: [id])
+
+  @@index([propertyId])
+  @@index([leaseId])
+}
+
+model Payment {
+  id               String        @id @default(cuid())
+  leaseId          String
+  dueDate          DateTime
+  paidAt           DateTime?
+  amountDue        Decimal
+  amountPaid       Decimal?
+  status           PaymentStatus @default(retard)
+  lateDays         Int           @default(0)
+  notes            String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  lease            Lease         @relation(fields: [leaseId], references: [id])
+
+  @@index([leaseId])
+  @@index([status])
+}
+
+model Notification {
+  id               String           @id @default(cuid())
+  type             NotificationType
+  subject          String
+  body             String
+  sentAt           DateTime?
+  readAt           DateTime?
+  createdAt        DateTime         @default(now())
+  senderId         String?
+  receiverId       String
+  sender           User?            @relation("SenderNotifications", fields: [senderId], references: [id])
+  receiver         User             @relation("ReceiverNotifications", fields: [receiverId], references: [id])
+
+  @@index([receiverId])
+  @@index([type])
+}
+
+model Document {
+  id               String      @id @default(cuid())
+  propertyId       String
+  leaseId          String?
+  category         String
+  fileName         String
+  filePath         String
+  mimeType         String
+  uploadedAt       DateTime    @default(now())
+  property         Property    @relation(fields: [propertyId], references: [id])
+  lease            Lease?      @relation(fields: [leaseId], references: [id])
+
+  @@index([propertyId])
+  @@index([leaseId])
+}
+
+model ActivityLog {
+  id               String      @id @default(cuid())
+  actionType       String      // "create", "update", "delete", "read", etc.
+  entityType       String      // "User", "Property", "Lease", "Payment", etc.
+  entityId         String?
+  actorId          String?
+  actor            User?       @relation("ActivityLogActor", fields: [actorId], references: [id])
+  beforeData       Json?       // Previous state (before update/delete)
+  afterData        Json?       // New state (after create/update)
+  ipAddress        String?
+  userAgent        String?
+  statusCode       Int?
+  errorMessage     String?
+  durationMs       Int?
+  createdAt        DateTime    @default(now())
+
+  @@index([entityType])
+  @@index([entityId])
+  @@index([actorId])
+  @@index([actionType])
+  @@index([createdAt])
+}

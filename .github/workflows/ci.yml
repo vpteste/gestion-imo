@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  # ─── Build + Tests API ─────────────────────────────────────────────────────
+  api:
+    name: API — Build & Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared package
+        run: npm run build -w packages/shared
+
+      - name: Build API
+        run: npm run build -w apps/api
+
+      - name: Run API tests
+        run: npm run test -w apps/api -- --runInBand --forceExit
+        env:
+          JWT_SECRET: ci-test-secret
+
+  # ─── Build Web ─────────────────────────────────────────────────────────────
+  web:
+    name: Web — Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared package
+        run: npm run build -w packages/shared
+
+      - name: Build Web
+        run: npm run build -w apps/web
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_API_URL: http://localhost:3001
+
+  # ─── TypeScript strict check ───────────────────────────────────────────────
+  typecheck:
+    name: TypeScript — Type check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared (types required)
+        run: npm run build -w packages/shared
+
+      - name: Type check API
+        run: npx tsc -p apps/api/tsconfig.build.json --noEmit
+
+      - name: Type check Web
+        run: npx tsc -p apps/web/tsconfig.json --noEmit

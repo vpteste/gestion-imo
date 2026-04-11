@@ -1,0 +1,27 @@
+{
+  "name": "gestion-immobiliere-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev -w apps/web",
+    "dev:web:clean": "npm run dev:clean -w apps/web",
+    "dev:api": "npm run start:dev -w apps/api",
+    "db:generate": "npm run generate -w @gestion/database",
+    "db:migrate": "npm run migrate:dev -w @gestion/database",
+    "db:seed": "npm run seed -w @gestion/database",
+    "db:studio": "npm run studio -w @gestion/database",
+    "build": "npm run build -w packages/shared && npm run build -w apps/api && npm run build -w apps/web",
+    "verify": "npm run build && npm run test -w apps/api",
+    "release:check": "npm run verify",
+    "test:web:e2e": "npm run test:e2e -w apps/web",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

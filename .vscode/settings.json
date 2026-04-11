@@ -1,0 +1,10 @@
+{
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "chat.tools.terminal.autoApprove": {
+    "/^npm\\.cmd run -w @gestion/database migrate:deploy$/": {
+      "approve": true,
+      "matchCommandLine": true
+    }
+  }
+}

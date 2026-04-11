@@ -1,0 +1,23 @@
+C’est fait. J’ai créé et activé un compte pour chaque rôle.
+
+Mot de passe commun pour les 4 comptes :
+
+Test@2026!
+Comptes créés :
+
+admin
+ID: 99c42f80-5d4f-4e11-9001-5d46d9404f03
+Email: admin.test.20260408235645@gestion.local
+Statut: active
+agent
+ID: 198b73b5-d0df-4168-83d0-1d09ca95f8ca
+Email: agent.test.20260408235645@gestion.local
+Statut: active
+proprietaire
+ID: 2b77e4f2-1d1f-4b63-858e-f8aefc459e87
+Email: owner.test.20260408235645@gestion.local
+Statut: active
+locataire
+ID: 33e08f85-f2fe-40f9-a9ff-092bf4f870f8
+Email: tenant.test.20260408235645@gestion.local
+Statut: active

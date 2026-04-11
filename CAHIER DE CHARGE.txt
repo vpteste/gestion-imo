@@ -1,0 +1,53 @@
+1.1 Contexte et objectifs 
+Le présent cahier des charges vise à définir les besoins fonctionnels et techniques d’un 
+logiciel de gestion immobilière destiné aux agences immobilières, aux propriétaires et aux 
+locataires. Le système devra centraliser, automatiser et sécuriser l’ensemble des processus de 
+gestion locative. 
+Objectifs principaux  
+• Digitaliser l’ensemble des opérations de gestion immobilière 
+• Améliorer la transparence entre agences et propriétaires 
+• Réduire les litiges locatifs 
+• Automatiser les rappels et communications 
+• Fournir des outils d’aide à la décision 
+1.2 Périmètre fonctionnel 
+1.2.1 Gestion des utilisateurs 
+• Profils  administrateur, agent immobilier, propriétaire, locataire 
+• Accès sécurisé par identifiants 
+• Droits et permissions par rôle 
+1.2.2 Gestion des biens immobiliers 
+• Création et modification des fiches biens 
+• Affectation des biens aux propriétaires 
+• Historique des locations 
+1.2.3 Gestion des contrats 
+• Importation et archivage des contrats de bail 
+• Archivage des protocoles d’accord agence–propriétaire 
+• Consultation et téléchargement des documents 
+1.2.4 État des lieux numérique 
+• Application mobile dédiée 
+• Prise de photos géolocalisées et horodatées 
+• Signature électronique du locataire 
+• Comparaison état d’entrée  sortie 
+1.2.5 Gestion des locataires et paiements 
+• Suivi des loyers (payé, en retard, impayé) 
+• Historique des paiements 
+• Alertes automatiques 
+1.2.6 Communication et rappels 
+• Modèles de messages prédéfinis 
+• Personnalisation des messages 
+• Envoi automatique d’emails 
+• Envoi de quittances et avis d’échéance 
+1.2.7 Tableaux de bord et statistiques 
+• Graphiques de performance locative 
+• Analyse des zones géographiques 
+• Indicateurs de solvabilité 
+1.3 Exigences techniques 
+• Application web responsive 
+• Application mobile (Android  iOS) 
+• Base de données centralisée 
+• Sauvegarde automatique des données 
+• Sécurité et confidentialité des informations 
+1.4 Livrables attendus 
+• Plateforme web fonctionnelle 
+• Application mobile 
+• Documentation utilisateur 
+• Support et maintenance 
