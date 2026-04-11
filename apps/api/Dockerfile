@@ -12,8 +12,9 @@ COPY packages/database/ ./packages/database/
 # Code source API
 COPY apps/api/ ./apps/api/
 
-# Installer toutes les dépendances (workspaces require hoisting)
-RUN npm ci
+# Installer uniquement les workspaces requis par l'API
+RUN npm ci --ignore-scripts --workspace @gestion/shared --workspace @gestion/database --workspace api
+RUN npx prisma generate --schema packages/database/prisma/schema.prisma
 
 # Compiler shared puis api
 RUN npm run build -w packages/shared
