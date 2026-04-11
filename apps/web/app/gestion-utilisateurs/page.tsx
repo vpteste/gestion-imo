@@ -41,6 +41,29 @@ type ActivityLog = {
 };
 
 const API_URL = process.env.NODE_ENV === "production" ? "/api" : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001");
+const PROD_API_FALLBACK = process.env.NEXT_PUBLIC_API_URL ?? "https://gestion-imo-api.onrender.com";
+
+function apiBases(): string[] {
+  if (process.env.NODE_ENV === "production") {
+    return [API_URL, PROD_API_FALLBACK];
+  }
+
+  return [API_URL];
+}
+
+async function fetchApi(path: string, init?: RequestInit): Promise<Response> {
+  let lastError: unknown;
+
+  for (const base of apiBases()) {
+    try {
+      return await fetch(`${base}${path}`, init);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("API inaccessible");
+}
 
 export default function GestionUtilisateursPage() {
   const { apiHeaders, user: currentUser } = useAuth();
@@ -128,7 +151,7 @@ export default function GestionUtilisateursPage() {
     }
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/auth/users`, { headers: apiHeaders });
+      const res = await fetchApi("/auth/users", { headers: apiHeaders });
       if (!res.ok) {
         throw new Error(`Erreur users (${res.status})`);
       }
@@ -152,8 +175,8 @@ export default function GestionUtilisateursPage() {
     async function loadReferenceMaps() {
       try {
         const [propertiesRes, tenantsRes] = await Promise.all([
-          fetch(`${API_URL}/properties`, { headers: apiHeaders }),
-          fetch(`${API_URL}/tenants`, { headers: apiHeaders }),
+          fetchApi("/properties", { headers: apiHeaders }),
+          fetchApi("/tenants", { headers: apiHeaders }),
         ]);
 
         if (propertiesRes.ok) {
@@ -200,7 +223,7 @@ export default function GestionUtilisateursPage() {
             : {};
 
     try {
-      const res = await fetch(`${API_URL}/auth/users/provision`, {
+      const res = await fetchApi("/auth/users/provision", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -233,7 +256,7 @@ export default function GestionUtilisateursPage() {
     setError(null);
     setSuspendingId(id);
     try {
-      const res = await fetch(`${API_URL}/auth/users/${id}/suspend`, {
+      const res = await fetchApi(`/auth/users/${id}/suspend`, {
         method: "PATCH",
         headers: apiHeaders,
       });
@@ -268,7 +291,7 @@ export default function GestionUtilisateursPage() {
             : undefined;
 
     try {
-      const res = await fetch(`${API_URL}/auth/users/${userId}/role`, {
+      const res = await fetchApi(`/auth/users/${userId}/role`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -296,7 +319,7 @@ export default function GestionUtilisateursPage() {
     setError(null);
     setReactivatingId(id);
     try {
-      const res = await fetch(`${API_URL}/auth/users/${id}/reactivate`, {
+      const res = await fetchApi(`/auth/users/${id}/reactivate`, {
         method: "PATCH",
         headers: apiHeaders,
       });
@@ -329,7 +352,7 @@ export default function GestionUtilisateursPage() {
     setAgentLogs([]);
     setAgentLogsLoading(true);
     try {
-      const res = await fetch(`${API_URL}/activity-logs?actorId=${agentUser.id}&limit=100`, { headers: apiHeaders });
+      const res = await fetchApi(`/activity-logs?actorId=${agentUser.id}&limit=100`, { headers: apiHeaders });
       if (res.ok) {
         setAgentLogs((await res.json()) as ActivityLog[]);
       }
@@ -389,7 +412,7 @@ export default function GestionUtilisateursPage() {
     }
 
     try {
-      const res = await fetch(`${API_URL}/auth/users/${item.id}/role`, {
+      const res = await fetchApi(`/auth/users/${item.id}/role`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
