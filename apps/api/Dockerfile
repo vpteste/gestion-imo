@@ -1,5 +1,5 @@
 # ─── Stage 1 : build ───────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 
 # Workspace root manifests
@@ -21,13 +21,14 @@ RUN npm run build -w packages/shared
 RUN npm run build -w apps/api
 
 # ─── Stage 2 : runtime ─────────────────────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:20-bookworm-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Prisma query engine needs OpenSSL at runtime on Alpine.
-RUN apk add --no-cache openssl
+# Prisma query engine needs OpenSSL at runtime.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
+	&& rm -rf /var/lib/apt/lists/*
 
 # Manifests (pour npm ci --omit=dev)
 COPY --from=builder /app/package.json          ./package.json
