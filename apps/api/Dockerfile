@@ -13,8 +13,7 @@ COPY packages/database/ ./packages/database/
 COPY apps/api/ ./apps/api/
 
 # Installer toutes les dépendances (workspaces require hoisting)
-RUN npm ci --ignore-scripts
-RUN npm run generate -w @gestion/database
+RUN npm ci
 
 # Compiler shared puis api
 RUN npm run build -w packages/shared
