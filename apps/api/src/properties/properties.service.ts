@@ -312,7 +312,7 @@ export class PropertiesService {
         data: {
           reference,
           title: dto.title,
-          propertyType: dto.propertyType,
+          propertyType: (dto.propertyType ?? "apartment") as any,
           addressLine: dto.addressLine,
           city: dto.city,
           postalCode: dto.postalCode,
@@ -321,8 +321,8 @@ export class PropertiesService {
           longitude: geo.longitude,
           rentAmount: dto.rentAmount,
           chargesAmount: dto.chargesAmount ?? 0,
-          ownerId: dto.ownerId,
-          agentId: dto.agentId,
+          ...(dto.ownerId !== undefined ? { ownerId: dto.ownerId } : {}),
+          ...(dto.agentId !== undefined ? { agentId: dto.agentId } : {}),
         },
       });
 
