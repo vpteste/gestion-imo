@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: gestion-imo-api-staging
+    env: node
+    plan: free
+    buildCommand: npm ci --include=dev --ignore-scripts --workspace @gestion/shared --workspace @gestion/database --workspace api && npx prisma generate --schema packages/database/prisma/schema.prisma && npm run build -w packages/shared && npm run build -w apps/api
+    startCommand: node apps/api/dist/main.js
+    autoDeploy: false
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: staging
+      - key: NPM_CONFIG_PRODUCTION
+        value: "false"
+      - key: CORS_ORIGIN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_SECURE
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: WHATSAPP_API_URL
+        sync: false
+      - key: WHATSAPP_API_TOKEN
+        sync: false
+      - key: WHATSAPP_SENDER
+        sync: false

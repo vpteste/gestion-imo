@@ -23,6 +23,49 @@ function parseBooleanFlag(value: string | undefined, fallback: boolean): boolean
   return normalized === "1" || normalized === "true" || normalized === "yes";
 }
 
+function normalizePhone(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = value.replace(/\s+/g, "").replace(/[^\d+]/g, "");
+  return normalized.length >= 8 ? normalized : undefined;
+}
+
+async function sendWhatsAppMessage(input: { to?: string; text: string }): Promise<{ sent: boolean; reason?: string }> {
+  const endpoint = process.env.WHATSAPP_API_URL?.trim();
+  const token = process.env.WHATSAPP_API_TOKEN?.trim();
+  const sender = process.env.WHATSAPP_SENDER?.trim();
+  const to = normalizePhone(input.to);
+
+  if (!endpoint) {
+    return { sent: false, reason: "WHATSAPP_API_URL non configure" };
+  }
+
+  if (!to) {
+    return { sent: false, reason: "Telephone locataire absent" };
+  }
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ to, text: input.text, ...(sender ? { from: sender } : {}) }),
+    });
+
+    if (!response.ok) {
+      return { sent: false, reason: `HTTP_${response.status}` };
+    }
+
+    return { sent: true };
+  } catch {
+    return { sent: false, reason: "Provider indisponible" };
+  }
+}
+
 @Injectable()
 export class PaymentsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -415,6 +458,27 @@ export class PaymentsService {
       return memoryPayment;
     })();
 
+    let tenantPhone: string | undefined;
+    try {
+      if (await this.isDbAvailable()) {
+        const contact = await this.prisma.payment.findUnique({
+          where: { id: paymentId },
+          select: {
+            lease: {
+              select: {
+                tenant: {
+                  select: { phone: true },
+                },
+              },
+            },
+          },
+        });
+        tenantPhone = contact?.lease.tenant.phone ?? undefined;
+      }
+    } catch {
+      tenantPhone = undefined;
+    }
+
     const to = payment.tenantEmail ?? "locataire@gestion.local";
     const host = process.env.SMTP_HOST?.trim();
     if (!host) {
@@ -441,10 +505,16 @@ export class PaymentsService {
       text: `Bonjour ${payment.tenantName},\n\nVotre paiement lie au bail ${payment.leaseReference ?? payment.leaseId} pour le bien ${payment.propertyReference ?? "non renseigne"} est actuellement au statut ${payment.status}.\nMontant concerne: ${payment.amountDue.toLocaleString("fr-FR")} FCFA.\nMerci de regulariser si necessaire.`,
     });
 
+    const whatsapp = await sendWhatsAppMessage({
+      to: tenantPhone,
+      text: `Rappel loyer: bail ${payment.leaseReference ?? payment.leaseId}, statut ${payment.status}, montant ${payment.amountDue.toLocaleString("fr-FR")} FCFA.`,
+    });
+
     return {
       message: "Rappel email envoye",
       to,
       messageId: info.messageId,
+      whatsapp,
     };
   }
 }

@@ -231,6 +231,10 @@ export class AuthService {
         throw new UnauthorizedException("Compte suspendu");
       }
 
+      if (dbUser.role !== "admin" && dbUser.role !== "agent") {
+        throw new UnauthorizedException("Acces interface reserve aux admins et agences");
+      }
+
       const passwordCheck = this.verifyPassword(dbUser.passwordHash, dto.password);
       if (!passwordCheck.valid) {
         throw new UnauthorizedException("Identifiants invalides");
@@ -286,6 +290,10 @@ export class AuthService {
 
     if (user.status === "suspended") {
       throw new UnauthorizedException("Compte suspendu");
+    }
+
+    if (user.role !== "admin" && user.role !== "agent") {
+      throw new UnauthorizedException("Acces interface reserve aux admins et agences");
     }
 
     const payload: JwtPayload = {

@@ -19,6 +19,39 @@ function parseBooleanFlag(value: string | undefined, fallback: boolean): boolean
   return normalized === "1" || normalized === "true" || normalized === "yes";
 }
 
+function normalizePhone(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = value.replace(/\s+/g, "").replace(/[^\d+]/g, "");
+  return normalized.length >= 8 ? normalized : undefined;
+}
+
+async function sendWhatsAppMessage(input: { to?: string; text: string }): Promise<void> {
+  const endpoint = process.env.WHATSAPP_API_URL?.trim();
+  const token = process.env.WHATSAPP_API_TOKEN?.trim();
+  const sender = process.env.WHATSAPP_SENDER?.trim();
+  const to = normalizePhone(input.to);
+
+  if (!endpoint || !to) {
+    return;
+  }
+
+  try {
+    await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ to, text: input.text, ...(sender ? { from: sender } : {}) }),
+    });
+  } catch {
+    // non bloquant
+  }
+}
+
 @Injectable()
 export class TenantsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -330,6 +363,11 @@ export class TenantsService {
       fullName,
       activationToken,
       activationTokenExpiresAt: activationTokenExpiresAt.toISOString(),
+    });
+
+    await sendWhatsAppMessage({
+      to: dto.phone,
+      text: `Bonjour ${fullName}, votre compte locataire est cree. Token d'activation: ${activationToken}. Expiration: ${activationTokenExpiresAt.toISOString()}.`,
     });
 
     const tenant = this.mapTenantFromDb(row);

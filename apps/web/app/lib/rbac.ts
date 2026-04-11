@@ -1,26 +1,26 @@
 import type { UserRole } from "@gestion/shared";
 
+const INTERFACE_ROLES: UserRole[] = ["admin", "agent"];
+
 export const ROLE_LABELS: Record<UserRole, string> = {
   admin: "Admin",
-  agent: "Agent",
-  proprietaire: "Propriétaire",
+  agent: "Agence",
+  proprietaire: "Proprietaire",
   locataire: "Locataire",
 };
 
 export const ROLE_ROUTE_ACCESS: Record<string, UserRole[]> = {
-  "/": ["admin", "agent", "proprietaire", "locataire"],
+  "/": INTERFACE_ROLES,
   "/acces-refuse": ["admin", "agent", "proprietaire", "locataire"],
-  "/mon-patrimoine": ["proprietaire"],
-  "/biens": ["admin", "agent", "proprietaire"],
-  "/locataires": ["admin", "agent", "proprietaire"],
-  "/contrats": ["admin", "agent", "proprietaire"],
-  "/mon-espace": ["locataire"],
-  "/paiements": ["admin", "agent", "proprietaire"],
-  "/dashboard": ["admin", "agent", "proprietaire"],
-  "/journaux-activite": ["admin"],
+  "/biens": INTERFACE_ROLES,
+  "/locataires": INTERFACE_ROLES,
+  "/contrats": INTERFACE_ROLES,
+  "/paiements": INTERFACE_ROLES,
+  "/dashboard": INTERFACE_ROLES,
+  "/journaux-activite": ["admin", "agent"],
   "/gestion-utilisateurs": ["admin"],
-  "/incidents": ["admin", "agent", "proprietaire", "locataire"],
-  "/etats-des-lieux": ["admin", "agent", "proprietaire", "locataire"],
+  "/incidents": INTERFACE_ROLES,
+  "/etats-des-lieux": INTERFACE_ROLES,
 };
 
 export type NavLinkDef = {
@@ -30,18 +30,16 @@ export type NavLinkDef = {
 };
 
 export const NAV_LINKS: NavLinkDef[] = [
-  { href: "/", label: "Accueil", roles: ["admin", "agent", "proprietaire", "locataire"] },
-  { href: "/mon-patrimoine", label: "Mon patrimoine", roles: ["proprietaire"] },
-  { href: "/biens", label: "Biens", roles: ["admin", "agent", "proprietaire"] },
-  { href: "/locataires", label: "Locataires", roles: ["admin", "agent", "proprietaire"] },
-  { href: "/contrats", label: "Contrats", roles: ["admin", "agent", "proprietaire"] },
-  { href: "/mon-espace", label: "Mon espace", roles: ["locataire"] },
-  { href: "/paiements", label: "Paiements", roles: ["admin", "agent", "proprietaire"] },
-  { href: "/dashboard", label: "Dashboard", roles: ["admin", "agent", "proprietaire"] },
-  { href: "/journaux-activite", label: "Journaux", roles: ["admin"] },
+  { href: "/", label: "Accueil", roles: INTERFACE_ROLES },
+  { href: "/biens", label: "Biens", roles: INTERFACE_ROLES },
+  { href: "/locataires", label: "Locataires", roles: INTERFACE_ROLES },
+  { href: "/contrats", label: "Contrats", roles: INTERFACE_ROLES },
+  { href: "/paiements", label: "Paiements", roles: INTERFACE_ROLES },
+  { href: "/dashboard", label: "Dashboard", roles: INTERFACE_ROLES },
+  { href: "/journaux-activite", label: "Journaux", roles: ["admin", "agent"] },
   { href: "/gestion-utilisateurs", label: "Acces", roles: ["admin"] },
-  { href: "/incidents", label: "Incidents", roles: ["admin", "agent", "proprietaire", "locataire"] },
-  { href: "/etats-des-lieux", label: "Etats des lieux", roles: ["admin", "agent", "proprietaire", "locataire"] },
+  { href: "/incidents", label: "Incidents", roles: INTERFACE_ROLES },
+  { href: "/etats-des-lieux", label: "Etats des lieux", roles: INTERFACE_ROLES },
 ];
 
 export function isRouteAllowed(pathname: string, role: UserRole): boolean {
@@ -53,13 +51,9 @@ export function isRouteAllowed(pathname: string, role: UserRole): boolean {
 }
 
 export function getDefaultRouteForRole(role: UserRole): string {
-  if (role === "locataire") {
-    return "/mon-espace";
+  if (role === "admin" || role === "agent") {
+    return "/dashboard";
   }
 
-  if (role === "proprietaire") {
-    return "/mon-patrimoine";
-  }
-
-  return "/dashboard";
+  return "/acces-refuse";
 }

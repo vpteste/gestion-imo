@@ -18,6 +18,24 @@ type ActivityLogEntry = {
 
 const API_URL = process.env.NODE_ENV === "production" ? "/api" : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001");
 
+function toBusinessLabel(path: string): string {
+  if (path.includes("/auth/login")) return "Connexion";
+  if (path.includes("/locataires")) return "Gestion locataire";
+  if (path.includes("/paiements")) return "Gestion paiement";
+  if (path.includes("/contrats")) return "Gestion contrat";
+  if (path.includes("/biens")) return "Gestion bien immobilier";
+  if (path.includes("/incidents")) return "Gestion incident";
+  if (path.includes("/etats-des-lieux")) return "Etat des lieux";
+  if (path.includes("/users")) return "Gestion acces utilisateur";
+  return "Action applicative";
+}
+
+function toSeverity(statusCode: number): "Succes" | "Attention" | "Erreur" {
+  if (statusCode >= 500) return "Erreur";
+  if (statusCode >= 400) return "Attention";
+  return "Succes";
+}
+
 export default function ActivityLogsPage() {
   const { apiHeaders } = useAuth();
   const [items, setItems] = useState<ActivityLogEntry[]>([]);
@@ -62,7 +80,7 @@ export default function ActivityLogsPage() {
       <div className="mx-auto w-full max-w-7xl space-y-6">
         <header className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Journaux d&apos;activité</h1>
-          <p className="mt-1 text-sm text-slate-500">Supervision admin des actions API.</p>
+          <p className="mt-1 text-sm text-slate-500">Lecture simplifiee des actions pour equipes non techniques.</p>
         </header>
 
         <section className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4">
@@ -117,10 +135,10 @@ export default function ActivityLogsPage() {
               <thead className="bg-slate-50">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold text-slate-700">Date</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Action</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Acteur</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Statut</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Durée</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Evenement</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Responsable</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Niveau</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Detail</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -130,33 +148,41 @@ export default function ActivityLogsPage() {
                   </tr>
                 ) : items.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-10 text-center text-slate-500">Aucun événement</td>
+                    <td colSpan={5} className="px-4 py-10 text-center text-slate-500">Aucun evenement</td>
                   </tr>
                 ) : (
-                  items.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 text-slate-700">{new Date(item.timestamp).toLocaleString("fr-FR")}</td>
-                      <td className="px-4 py-3">
-                        <span className="rounded bg-slate-100 px-2 py-1 font-semibold text-slate-700">
-                          {item.method}
-                        </span>
-                        <span className="ml-2 text-slate-700">{item.path}</span>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {(item.actorEmail || item.actorId || "anonyme") + (item.actorRole ? ` (${item.actorRole})` : "")}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`rounded px-2 py-1 text-xs font-semibold ${
-                            item.statusCode >= 400 ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"
-                          }`}
-                        >
-                          {item.statusCode}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">{item.durationMs ?? 0} ms</td>
-                    </tr>
-                  ))
+                  items.map((item) => {
+                    const severity = toSeverity(item.statusCode);
+                    return (
+                      <tr key={item.id} className="hover:bg-slate-50">
+                        <td className="px-4 py-3 text-slate-700">{new Date(item.timestamp).toLocaleString("fr-FR")}</td>
+                        <td className="px-4 py-3 text-slate-700">
+                          <p className="font-semibold">{toBusinessLabel(item.path)}</p>
+                          <p className="text-xs text-slate-500">{item.method}</p>
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {(item.actorEmail || item.actorId || "anonyme") + (item.actorRole ? ` (${item.actorRole})` : "")}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`rounded px-2 py-1 text-xs font-semibold ${
+                              severity === "Erreur"
+                                ? "bg-red-50 text-red-700"
+                                : severity === "Attention"
+                                  ? "bg-amber-50 text-amber-700"
+                                  : "bg-green-50 text-green-700"
+                            }`}
+                          >
+                            {severity}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          <p>Code {item.statusCode}</p>
+                          <p className="text-xs text-slate-500">{item.path} | {item.durationMs ?? 0} ms</p>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
