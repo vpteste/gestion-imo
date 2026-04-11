@@ -1,10 +1,10 @@
 services:
   - type: web
     name: gestion-imo-api
-    env: docker
+    env: node
     plan: free
-    dockerfilePath: apps/api/Dockerfile
-    dockerContext: .
+    buildCommand: npm ci --ignore-scripts --workspace @gestion/shared --workspace @gestion/database --workspace api && npx prisma generate --schema packages/database/prisma/schema.prisma && npm run build -w packages/shared && npm run build -w apps/api
+    startCommand: node apps/api/dist/main.js
     autoDeploy: true
     healthCheckPath: /health
     envVars:
