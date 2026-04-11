@@ -45,7 +45,7 @@ const STATUS_COLORS: Record<TenantStatus, string> = {
   en_attente: "bg-amber-100 text-amber-800",
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const API_URL = process.env.NODE_ENV === "production" ? "/api" : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001");
 
 const defaultForm = {
   firstName: "",

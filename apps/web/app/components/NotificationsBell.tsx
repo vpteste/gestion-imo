@@ -12,7 +12,7 @@ type NotificationItem = {
   readAt?: string;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const API_URL = process.env.NODE_ENV === "production" ? "/api" : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001");
 
 const TYPE_STYLES: Record<NotificationItem["type"], string> = {
   rappel_echeance: "border-amber-200 bg-amber-50 text-amber-800",

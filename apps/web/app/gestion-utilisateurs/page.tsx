@@ -30,7 +30,7 @@ type Tenant = {
   leaseReference?: string;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const API_URL = process.env.NODE_ENV === "production" ? "/api" : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001");
 
 export default function GestionUtilisateursPage() {
   const { apiHeaders, user: currentUser } = useAuth();

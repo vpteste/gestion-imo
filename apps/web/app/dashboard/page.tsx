@@ -31,7 +31,7 @@ type Summary = {
   paymentStatus?: Record<string, number>;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const API_URL = process.env.NODE_ENV === "production" ? "/api" : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001");
 
 const STATUS_COLORS: Record<string, string> = {
   paye:   "#22c55e",
