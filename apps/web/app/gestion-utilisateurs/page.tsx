@@ -73,14 +73,21 @@ export default function GestionUtilisateursPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [provisionResult, setProvisionResult] = useState<{
     user: { id: string; email: string; fullName: string; role: string; identityLinks?: ManagedUser["identityLinks"] };
-    activation: { token: string; expiresAt: string; emailError?: string; emailPreview?: string };
+    activation: { token?: string; expiresAt?: string; emailError?: string; emailPreview?: string; mode?: "token" | "password" };
+    initialPassword?: string;
   } | null>(null);
   const [pendingProvision, setPendingProvision] = useState<{
     email: string;
     fullName: string;
     role: ManagedRole;
     identityLinks?: ManagedUser["identityLinks"];
+    initialPassword?: string;
   } | null>(null);
+  const [useInitialPassword, setUseInitialPassword] = useState(true);
+  const [initialPassword, setInitialPassword] = useState("");
+  const [editingPasswordUserId, setEditingPasswordUserId] = useState<string | null>(null);
+  const [passwordDraft, setPasswordDraft] = useState("");
+  const [savingPasswordUserId, setSavingPasswordUserId] = useState<string | null>(null);
   const [agentActivityUserId, setAgentActivityUserId] = useState<string | null>(null);
   const [agentLogs, setAgentLogs] = useState<ActivityLog[]>([]);
   const [agentLogsLoading, setAgentLogsLoading] = useState(false);
@@ -149,6 +156,15 @@ export default function GestionUtilisateursPage() {
     return `${prefix}-${initials}-${stamp}-${rand}`;
   }
 
+  function generateStrongPassword(length = 12): string {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+    let out = "";
+    for (let index = 0; index < length; index += 1) {
+      out += chars[Math.floor(Math.random() * chars.length)] ?? "A";
+    }
+    return out;
+  }
+
   function isValidEmail(value: string): boolean {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
   }
@@ -167,6 +183,44 @@ export default function GestionUtilisateursPage() {
     }
 
     return fallback;
+  }
+
+  function openPasswordEditor(userId: string) {
+    setEditingPasswordUserId(userId);
+    setPasswordDraft(generateStrongPassword());
+  }
+
+  async function saveUserPassword(userId: string) {
+    if (passwordDraft.length < 8) {
+      setError("Le mot de passe doit contenir au moins 8 caracteres");
+      return;
+    }
+
+    setSavingPasswordUserId(userId);
+    setError(null);
+
+    try {
+      const res = await fetchApi(`/auth/users/${userId}/password`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...apiHeaders,
+        },
+        body: JSON.stringify({ password: passwordDraft }),
+      });
+
+      if (!res.ok) {
+        throw new Error(await readApiErrorMessage(res, `Mise a jour mot de passe impossible (${res.status})`));
+      }
+
+      await loadUsers(true);
+      setEditingPasswordUserId(null);
+      setPasswordDraft("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur inconnue");
+    } finally {
+      setSavingPasswordUserId(null);
+    }
   }
 
   async function loadUsers(isRefresh = false) {
@@ -248,6 +302,12 @@ export default function GestionUtilisateursPage() {
       return;
     }
 
+    const selectedInitialPassword = useInitialPassword ? initialPassword : undefined;
+    if (selectedInitialPassword && selectedInitialPassword.length < 8) {
+      setError("Le mot de passe initial doit contenir au moins 8 caracteres");
+      return;
+    }
+
     const identityLinks: Record<string, unknown> =
       role === "proprietaire"
           ? { propertyIds: [buildAutoId("PROP", fullName)] }
@@ -263,6 +323,7 @@ export default function GestionUtilisateursPage() {
       fullName: fullName.trim(),
       role,
       identityLinks,
+      initialPassword: selectedInitialPassword,
     });
   }
 
@@ -283,6 +344,7 @@ export default function GestionUtilisateursPage() {
           fullName: pendingProvision.fullName,
           role: pendingProvision.role,
           identityLinks: pendingProvision.identityLinks,
+          initialPassword: pendingProvision.initialPassword,
         }),
       });
 
@@ -291,10 +353,15 @@ export default function GestionUtilisateursPage() {
       }
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      setProvisionResult(await res.json());
+      const payload = await res.json();
+      setProvisionResult({
+        ...payload,
+        initialPassword: pendingProvision.initialPassword,
+      });
       setPendingProvision(null);
       setEmail("");
       setFullName("");
+      setInitialPassword("");
       setShowCreateForm(false);
       await loadUsers();
     } catch (err) {
@@ -596,6 +663,39 @@ export default function GestionUtilisateursPage() {
             <option value="agent">agent</option>
             <option value="proprietaire">proprietaire</option>
           </select>
+          <label className="md:col-span-3 inline-flex items-center gap-2 text-xs text-slate-700">
+            <input
+              type="checkbox"
+              checked={useInitialPassword}
+              onChange={(e) => {
+                const enabled = e.target.checked;
+                setUseInitialPassword(enabled);
+                if (enabled && !initialPassword) {
+                  setInitialPassword(generateStrongPassword());
+                }
+              }}
+              className="h-4 w-4 rounded border-slate-300"
+            />
+            Définir un mot de passe initial (compte actif immédiatement)
+          </label>
+          {useInitialPassword && (
+            <>
+              <input
+                value={initialPassword}
+                onChange={(e) => setInitialPassword(e.target.value)}
+                minLength={8}
+                placeholder="Mot de passe initial (8+ caractères)"
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-2"
+              />
+              <button
+                type="button"
+                onClick={() => setInitialPassword(generateStrongPassword())}
+                className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                Générer mot de passe
+              </button>
+            </>
+          )}
           <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 md:col-span-2">
             Les identifiants metier (agence et identifiant agent) sont generes automatiquement.
           </p>
@@ -604,37 +704,6 @@ export default function GestionUtilisateursPage() {
         )}
 
         {error && <p className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</p>}
-
-        {pendingProvision && (
-          <section className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-900">
-            <p className="font-semibold">Validation admin requise avant création</p>
-            <p className="mt-1">Nom: <strong>{pendingProvision.fullName}</strong></p>
-            <p>Email: <strong>{pendingProvision.email}</strong></p>
-            <p>Rôle: <strong>{pendingProvision.role}</strong></p>
-            {pendingProvision.identityLinks?.agency && (
-              <p>Agence: <strong>{pendingProvision.identityLinks.agency}</strong></p>
-            )}
-            {pendingProvision.identityLinks?.agentCode && (
-              <p>Identifiant agent: <strong>{pendingProvision.identityLinks.agentCode}</strong></p>
-            )}
-            <div className="mt-3 flex gap-2">
-              <button
-                type="button"
-                onClick={() => void confirmProvision()}
-                className="rounded border border-indigo-300 bg-white px-3 py-1 text-xs font-semibold text-indigo-800 hover:bg-indigo-100"
-              >
-                Valider et créer le compte
-              </button>
-              <button
-                type="button"
-                onClick={() => setPendingProvision(null)}
-                className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-              >
-                Annuler
-              </button>
-            </div>
-          </section>
-        )}
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -735,6 +804,15 @@ export default function GestionUtilisateursPage() {
                               Voir activit&eacute;s
                             </button>
                           )}
+                          {canAdmin && user.id !== currentUser?.id && (
+                            <button
+                              type="button"
+                              onClick={() => openPasswordEditor(user.id)}
+                              className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100"
+                            >
+                              Mot de passe
+                            </button>
+                          )}
                           {canAdmin && user.status !== "suspended" && user.id !== currentUser?.id && (
                             <button
                               onClick={() => void suspendUser(user.id)}
@@ -804,6 +882,46 @@ export default function GestionUtilisateursPage() {
         </section>
       </div>
 
+      {pendingProvision && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <h2 className="text-lg font-bold text-slate-900">Validation admin avant création</h2>
+            <p className="mt-1 text-xs text-slate-500">Vérifiez les données ci-dessous puis confirmez la création.</p>
+
+            <div className="mt-4 space-y-2 rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm">
+              <p>Nom: <strong>{pendingProvision.fullName}</strong></p>
+              <p>Email: <strong>{pendingProvision.email}</strong></p>
+              <p>Rôle: <strong>{pendingProvision.role}</strong></p>
+              {pendingProvision.identityLinks?.agency && <p>Agence: <strong>{pendingProvision.identityLinks.agency}</strong></p>}
+              {pendingProvision.identityLinks?.agentCode && <p>Identifiant agent: <strong>{pendingProvision.identityLinks.agentCode}</strong></p>}
+              {pendingProvision.initialPassword && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-2">
+                  <p className="text-xs font-semibold text-amber-800">Mot de passe initial (modifiable):</p>
+                  <p className="mt-1 break-all font-mono text-xs text-amber-900">{pendingProvision.initialPassword}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingProvision(null)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmProvision()}
+                className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100"
+              >
+                Valider et créer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Modale: IDs agent après provisionnement ─────────────────── */}
       {provisionResult && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -814,7 +932,11 @@ export default function GestionUtilisateursPage() {
               </div>
               <div>
                 <h2 className="text-lg font-bold text-slate-900">Compte créé avec succès</h2>
-                <p className="text-xs text-slate-500">Transmettez ces identifiants à l&apos;agent pour activation</p>
+                <p className="text-xs text-slate-500">
+                  {provisionResult.activation.mode === "password"
+                    ? "Compte actif immédiatement avec mot de passe défini par l'admin"
+                    : "Transmettez ces identifiants à l&apos;agent pour activation"}
+                </p>
               </div>
             </div>
 
@@ -851,31 +973,51 @@ export default function GestionUtilisateursPage() {
               )}
             </div>
 
-            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-amber-800">
-                  Token d&apos;activation &nbsp;
-                  {provisionResult.activation.emailError
-                    ? <span className="text-red-600">⚠ email non envoyé</span>
-                    : <span className="text-green-700">✓ email envoyé</span>}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => void copyToClipboard(provisionResult.activation.token)}
-                  className="rounded border border-amber-300 bg-white/80 px-2 py-0.5 text-xs font-semibold text-amber-900 hover:bg-white"
-                >
-                  {copyFeedback === "done" ? "Copié ✓" : copyFeedback === "error" ? "Echec" : "Copier"}
-                </button>
+            {provisionResult.initialPassword && (
+              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-emerald-800">Mot de passe initial</p>
+                  <button
+                    type="button"
+                    onClick={() => void copyToClipboard(provisionResult.initialPassword ?? "")}
+                    className="rounded border border-emerald-300 bg-white/80 px-2 py-0.5 text-xs font-semibold text-emerald-900 hover:bg-white"
+                  >
+                    {copyFeedback === "done" ? "Copié ✓" : copyFeedback === "error" ? "Echec" : "Copier"}
+                  </button>
+                </div>
+                <p className="mt-2 break-all rounded bg-white/60 px-2 py-1 font-mono text-xs text-emerald-900">{provisionResult.initialPassword}</p>
               </div>
-              {provisionResult.activation.emailError && (
-                <p className="mt-1 text-xs text-red-600">{provisionResult.activation.emailError} — Partagez le token manuellement.</p>
-              )}
-              <p className="mt-2 break-all rounded bg-white/60 px-2 py-1 font-mono text-xs text-amber-900">{provisionResult.activation.token}</p>
-            </div>
+            )}
 
-            <p className="mt-3 text-xs text-slate-400">
-              L&apos;agent doit utiliser ce token sur la page <strong>/auth/activate</strong> pour définir son mot de passe et se connecter.
-            </p>
+            {provisionResult.activation.token && (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-amber-800">
+                    Token d&apos;activation &nbsp;
+                    {provisionResult.activation.emailError
+                      ? <span className="text-red-600">⚠ email non envoyé</span>
+                      : <span className="text-green-700">✓ email envoyé</span>}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void copyToClipboard(provisionResult.activation.token ?? "")}
+                    className="rounded border border-amber-300 bg-white/80 px-2 py-0.5 text-xs font-semibold text-amber-900 hover:bg-white"
+                  >
+                    {copyFeedback === "done" ? "Copié ✓" : copyFeedback === "error" ? "Echec" : "Copier"}
+                  </button>
+                </div>
+                {provisionResult.activation.emailError && (
+                  <p className="mt-1 text-xs text-red-600">{provisionResult.activation.emailError} — Partagez le token manuellement.</p>
+                )}
+                <p className="mt-2 break-all rounded bg-white/60 px-2 py-1 font-mono text-xs text-amber-900">{provisionResult.activation.token}</p>
+              </div>
+            )}
+
+            {!provisionResult.initialPassword && provisionResult.activation.token && (
+              <p className="mt-3 text-xs text-slate-400">
+                L&apos;agent doit utiliser ce token sur la page <strong>/auth/activate</strong> pour définir son mot de passe et se connecter.
+              </p>
+            )}
 
             <div className="mt-5 flex justify-end">
               <button
@@ -883,6 +1025,53 @@ export default function GestionUtilisateursPage() {
                 className="rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-indigo-700"
               >
                 Valider et fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingPasswordUserId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <h2 className="text-lg font-bold text-slate-900">Modifier le mot de passe</h2>
+            <p className="mt-1 text-xs text-slate-500">Ce changement est immédiat et active le compte.</p>
+
+            <input
+              value={passwordDraft}
+              onChange={(event) => setPasswordDraft(event.target.value)}
+              placeholder="Nouveau mot de passe (8+ caractères)"
+              className="mt-4 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
+
+            <div className="mt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setPasswordDraft(generateStrongPassword())}
+                className="rounded border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                Générer
+              </button>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingPasswordUserId(null);
+                  setPasswordDraft("");
+                }}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                disabled={savingPasswordUserId === editingPasswordUserId}
+                onClick={() => void saveUserPassword(editingPasswordUserId)}
+                className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-60"
+              >
+                {savingPasswordUserId === editingPasswordUserId ? "Enregistrement..." : "Enregistrer"}
               </button>
             </div>
           </div>

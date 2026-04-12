@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post, Req } from "@nestjs/common";
 import { Roles } from "../common/decorators/roles.decorator";
 import type { AuthenticatedRequest } from "../common/types";
 import { AuthService } from "./auth.service";
-import type { ActivateAccountDto, LoginDto, ProvisionUserDto, UpdateUserRoleDto } from "./auth.types";
+import type { ActivateAccountDto, LoginDto, ProvisionUserDto, UpdateUserPasswordDto, UpdateUserRoleDto } from "./auth.types";
 
 @Controller("auth")
 export class AuthController {
@@ -46,6 +46,12 @@ export class AuthController {
   @Roles("admin")
   updateRole(@Param("id") id: string, @Body() body: UpdateUserRoleDto) {
     return this.authService.updateUserRole(id, body);
+  }
+
+  @Patch("users/:id/password")
+  @Roles("admin")
+  updatePassword(@Param("id") id: string, @Body() body: UpdateUserPasswordDto) {
+    return this.authService.updateUserPassword(id, body);
   }
 
   @Get("profile")

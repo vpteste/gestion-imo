@@ -13,6 +13,7 @@ import type {
   JwtPayload,
   LoginDto,
   ProvisionUserDto,
+  UpdateUserPasswordDto,
   UpdateUserRoleDto,
 } from "./auth.types";
 
@@ -404,6 +405,15 @@ export class AuthService {
     const normalizedIdentityLinks = this.normalizeIdentityLinks(dto.role, dto.identityLinks, dto.fullName);
     this.validateIdentityLinks(dto.role, normalizedIdentityLinks);
 
+    const initialPassword = typeof dto.initialPassword === "string" && dto.initialPassword.length > 0
+      ? dto.initialPassword
+      : undefined;
+    if (initialPassword && initialPassword.length < 8) {
+      throw new BadRequestException("Le mot de passe initial doit contenir au moins 8 caracteres");
+    }
+
+    const initialStatus: AccountStatus = initialPassword ? "active" : "pending";
+
     const activationToken = randomBytes(24).toString("hex");
     const activationTokenExpiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
 
@@ -423,13 +433,13 @@ export class AuthService {
         data: {
           id: randomUUID(),
           email: normalizedEmail,
-          passwordHash: "",
+          passwordHash: initialPassword ? hashPassword(initialPassword) : "",
           fullName: dto.fullName.trim(),
           role: dto.role,
-          status: "pending",
+          status: initialStatus,
           identityLinks: normalizedIdentityLinks as unknown as object,
-          activationToken,
-          activationTokenExpiresAt: new Date(activationTokenExpiresAt),
+          activationToken: initialPassword ? null : activationToken,
+          activationTokenExpiresAt: initialPassword ? null : new Date(activationTokenExpiresAt),
         },
         select: {
           id: true,
@@ -443,15 +453,17 @@ export class AuthService {
 
       let emailDispatchId: string | undefined;
       let emailError: string | undefined;
-      try {
-        emailDispatchId = await this.sendActivationEmail({
-          email: createdDbUser.email,
-          fullName: createdDbUser.fullName,
-          activationToken,
-          activationTokenExpiresAt,
-        });
-      } catch (emailErr) {
-        emailError = emailErr instanceof Error ? emailErr.message : "Erreur envoi email";
+      if (!initialPassword) {
+        try {
+          emailDispatchId = await this.sendActivationEmail({
+            email: createdDbUser.email,
+            fullName: createdDbUser.fullName,
+            activationToken,
+            activationTokenExpiresAt,
+          });
+        } catch (emailErr) {
+          emailError = emailErr instanceof Error ? emailErr.message : "Erreur envoi email";
+        }
       }
 
       return {
@@ -464,10 +476,11 @@ export class AuthService {
           identityLinks: this.parseIdentityLinks(createdDbUser.identityLinks),
         },
         activation: {
-          expiresAt: activationTokenExpiresAt,
-          token: activationToken,
+          expiresAt: initialPassword ? undefined : activationTokenExpiresAt,
+          token: initialPassword ? undefined : activationToken,
           emailPreview: emailDispatchId,
           emailError,
+          mode: initialPassword ? "password" : "token",
         },
       };
     } catch (error) {
@@ -484,13 +497,13 @@ export class AuthService {
     const created: DemoUser = {
       id: randomUUID(),
       email: normalizedEmail,
-      passwordHash: "",
+      passwordHash: initialPassword ? hashPassword(initialPassword) : "",
       fullName: dto.fullName.trim(),
       role: dto.role,
-      status: "pending",
+      status: initialStatus,
       identityLinks: normalizedIdentityLinks,
-      activationToken,
-      activationTokenExpiresAt,
+      activationToken: initialPassword ? undefined : activationToken,
+      activationTokenExpiresAt: initialPassword ? undefined : activationTokenExpiresAt,
     };
 
     this.users.push(created);
@@ -498,24 +511,27 @@ export class AuthService {
 
     let emailDispatchId: string | undefined;
     let emailError: string | undefined;
-    try {
-      emailDispatchId = await this.sendActivationEmail({
-        email: created.email,
-        fullName: created.fullName,
-        activationToken,
-        activationTokenExpiresAt,
-      });
-    } catch (emailErr) {
-      emailError = emailErr instanceof Error ? emailErr.message : "Erreur envoi email";
+    if (!initialPassword) {
+      try {
+        emailDispatchId = await this.sendActivationEmail({
+          email: created.email,
+          fullName: created.fullName,
+          activationToken,
+          activationTokenExpiresAt,
+        });
+      } catch (emailErr) {
+        emailError = emailErr instanceof Error ? emailErr.message : "Erreur envoi email";
+      }
     }
 
     return {
       user: this.toPublicUser(created),
       activation: {
-        expiresAt: created.activationTokenExpiresAt,
-        token: activationToken,
+        expiresAt: initialPassword ? undefined : created.activationTokenExpiresAt,
+        token: initialPassword ? undefined : activationToken,
         emailPreview: emailDispatchId,
         emailError,
+        mode: initialPassword ? "password" : "token",
       },
     };
   }
@@ -806,6 +822,68 @@ export class AuthService {
 
     user.role = dto.role;
     user.identityLinks = normalizedIdentityLinks;
+    await this.persistUsers();
+    return this.toPublicUser(user);
+  }
+
+  async updateUserPassword(userId: string, dto: UpdateUserPasswordDto) {
+    await this.ensureUsersLoaded();
+
+    if (!dto.password || dto.password.length < 8) {
+      throw new BadRequestException("Le mot de passe doit contenir au moins 8 caracteres");
+    }
+
+    try {
+      const existing = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true },
+      });
+
+      if (!existing) {
+        throw new NotFoundException("Utilisateur introuvable");
+      }
+
+      const updated = await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          passwordHash: hashPassword(dto.password),
+          status: "active",
+          activationToken: null,
+          activationTokenExpiresAt: null,
+        },
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+          role: true,
+          status: true,
+          identityLinks: true,
+        },
+      });
+
+      return {
+        id: updated.id,
+        email: updated.email,
+        fullName: updated.fullName,
+        role: updated.role,
+        status: updated.status as AccountStatus,
+        identityLinks: this.parseIdentityLinks(updated.identityLinks),
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+    }
+
+    const user = this.users.find((candidate) => candidate.id === userId);
+    if (!user) {
+      throw new NotFoundException("Utilisateur introuvable");
+    }
+
+    user.passwordHash = hashPassword(dto.password);
+    user.status = "active";
+    user.activationToken = undefined;
+    user.activationTokenExpiresAt = undefined;
     await this.persistUsers();
     return this.toPublicUser(user);
   }

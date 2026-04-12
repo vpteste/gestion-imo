@@ -28,6 +28,7 @@ export interface ProvisionUserDto {
   fullName: string;
   role: UserRole;
   identityLinks?: IdentityLinks;
+  initialPassword?: string;
 }
 
 export interface ActivateAccountDto {
@@ -38,4 +39,8 @@ export interface ActivateAccountDto {
 export interface UpdateUserRoleDto {
   role: UserRole;
   identityLinks?: IdentityLinks;
+}
+
+export interface UpdateUserPasswordDto {
+  password: string;
 }
