@@ -28,6 +28,11 @@ type Property = {
 };
 
 type Tenant = {
+  id: string;
+  firstName?: string;
+  lastName?: string;
+  fullName?: string;
+  email?: string;
   leaseId?: string;
   leaseReference?: string;
 };
@@ -39,6 +44,8 @@ type ActivityLog = {
   path: string;
   statusCode: number;
   durationMs?: number;
+  targetType?: string;
+  targetLabel?: string;
 };
 
 type AgentBusinessAction = {
@@ -120,6 +127,7 @@ export default function GestionUtilisateursPage() {
   const [copyFeedback, setCopyFeedback] = useState<"idle" | "done" | "error">("idle"); // utilisé dans la modale provision
   const [propertyReferenceByKey, setPropertyReferenceByKey] = useState<Record<string, string>>({});
   const [leaseReferenceById, setLeaseReferenceById] = useState<Record<string, string>>({});
+  const [tenantLabelByKey, setTenantLabelByKey] = useState<Record<string, string>>({});
 
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
@@ -283,12 +291,27 @@ export default function GestionUtilisateursPage() {
         if (tenantsRes.ok) {
           const tenants = (await tenantsRes.json()) as Tenant[];
           const leaseMap: Record<string, string> = {};
+          const tenantMap: Record<string, string> = {};
           for (const tenant of tenants) {
             if (tenant.leaseId && tenant.leaseReference) {
               leaseMap[tenant.leaseId] = tenant.leaseReference;
             }
+
+            const fullName =
+              tenant.fullName
+              ?? [tenant.firstName ?? "", tenant.lastName ?? ""].join(" ").trim()
+              ?? "";
+            const label = [fullName, tenant.email].filter(Boolean).join(" — ");
+
+            if (tenant.id && label) {
+              tenantMap[tenant.id] = label;
+            }
+            if (tenant.email && label) {
+              tenantMap[tenant.email] = label;
+            }
           }
           setLeaseReferenceById(leaseMap);
+          setTenantLabelByKey(tenantMap);
         }
       } catch {
         // ignore
@@ -501,6 +524,32 @@ export default function GestionUtilisateursPage() {
     }
 
     const cleanPath = log.path.split("?")[0] ?? log.path;
+    const segments = cleanPath.split("/").filter(Boolean);
+    const entityId = segments.length > 1 ? segments[1] : undefined;
+
+    const resolvedDetail = (() => {
+      if (log.targetLabel) {
+        return log.targetLabel;
+      }
+
+      if (segments[0] === "properties" && entityId) {
+        return propertyReferenceByKey[entityId] ?? cleanPath;
+      }
+
+      if (segments[0] === "tenants" && entityId) {
+        return tenantLabelByKey[entityId] ?? cleanPath;
+      }
+
+      if (segments[0] === "tenants" && method === "POST") {
+        return "Locataire ajouté (détail non capturé)";
+      }
+
+      if (segments[0] === "properties" && method === "POST") {
+        return "Bien ajouté (détail non capturé)";
+      }
+
+      return cleanPath;
+    })();
 
     const rules: Array<{ re: RegExp; action: string; module: string; detail?: string }> = [
       { re: /^\/properties$/, action: "Ajout bien", module: "Biens" },
@@ -535,7 +584,7 @@ export default function GestionUtilisateursPage() {
       timestamp: log.timestamp,
       action: matched.action,
       module: matched.module,
-      detail: cleanPath,
+      detail: resolvedDetail,
       statusCode: log.statusCode,
     };
   }

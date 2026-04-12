@@ -10,6 +10,8 @@ export interface ActivityLogEntry {
   ipAddress?: string;
   userAgent?: string;
   durationMs?: number | undefined;
+  targetType?: string;
+  targetLabel?: string;
 }
 
 export interface ActivityLogFilters {
@@ -19,4 +21,13 @@ export interface ActivityLogFilters {
   statusCode?: number;
   pathContains?: string;
   limit?: number;
+}
+
+export interface OnlineAgentEntry {
+  agentId: string;
+  agentEmail?: string;
+  lastSeenAt: string;
+  ipAddress?: string;
+  userAgent?: string;
+  deviceSummary?: string;
 }
