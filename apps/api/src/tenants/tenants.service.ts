@@ -358,12 +358,17 @@ export class TenantsService {
       },
     });
 
-    await this.sendActivationEmail({
-      email: created.email,
-      fullName,
-      activationToken,
-      activationTokenExpiresAt: activationTokenExpiresAt.toISOString(),
-    });
+    let emailError: string | undefined;
+    try {
+      await this.sendActivationEmail({
+        email: created.email,
+        fullName,
+        activationToken,
+        activationTokenExpiresAt: activationTokenExpiresAt.toISOString(),
+      });
+    } catch (error) {
+      emailError = error instanceof Error ? error.message : "Erreur envoi email";
+    }
 
     await sendWhatsAppMessage({
       to: dto.phone,
@@ -376,6 +381,7 @@ export class TenantsService {
       activation: {
         token: process.env.NODE_ENV === "production" ? undefined : activationToken,
         expiresAt: activationTokenExpiresAt.toISOString(),
+        emailError,
       },
     };
   }

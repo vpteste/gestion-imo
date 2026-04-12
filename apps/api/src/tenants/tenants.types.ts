@@ -50,5 +50,6 @@ export interface TenantEntity {
   activation?: {
     token?: string;
     expiresAt: string;
+    emailError?: string;
   };
 }

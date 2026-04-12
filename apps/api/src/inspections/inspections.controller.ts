@@ -155,13 +155,29 @@ export class InspectionsController {
   }
 
   @Post(":id/sign")
-  @Roles("locataire")
+  @Roles("admin", "agent", "proprietaire", "locataire")
   async sign(@Param("id") id: string, @Body() body: SignInspectionDto, @CurrentUser() user?: RequestUser) {
     const inspection = await this.inspectionsService.findOne(id);
-    const leaseIds = await this.getTenantLeaseIds(user?.email);
 
-    if (!leaseIds.includes(inspection.leaseId)) {
-      throw new ForbiddenException("Accès interdit à cet état des lieux");
+    if (user?.role === "locataire") {
+      const leaseIds = await this.getTenantLeaseIds(user?.email);
+      if (!leaseIds.includes(inspection.leaseId)) {
+        throw new ForbiddenException("Accès interdit à cet état des lieux");
+      }
+    }
+
+    if (user?.role === "agent") {
+      const propertyIds = await this.getAgentPropertyKeys(user.id);
+      if (!propertyIds.includes(inspection.propertyId)) {
+        throw new ForbiddenException("Accès interdit hors portefeuille agent");
+      }
+    }
+
+    if (user?.role === "proprietaire") {
+      const propertyIds = await this.getOwnerPropertyKeys(user.id);
+      if (!propertyIds.includes(inspection.propertyId)) {
+        throw new ForbiddenException("Accès interdit à cet état des lieux");
+      }
     }
 
     const signed = await this.inspectionsService.signByTenantWithDetails(id, {

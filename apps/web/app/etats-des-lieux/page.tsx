@@ -59,6 +59,29 @@ type InspectionTarget = {
 };
 
 const API_URL = process.env.NODE_ENV === "production" ? "/api" : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001");
+const PROD_API_FALLBACK = process.env.NEXT_PUBLIC_API_URL ?? "https://gestion-imo-api.onrender.com";
+
+function apiBases(): string[] {
+  if (process.env.NODE_ENV === "production") {
+    return [API_URL, PROD_API_FALLBACK];
+  }
+
+  return [API_URL];
+}
+
+async function fetchApi(path: string, init?: RequestInit): Promise<Response> {
+  let lastError: unknown;
+
+  for (const base of apiBases()) {
+    try {
+      return await fetch(`${base}${path}`, init);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("API inaccessible");
+}
 
 const STATUS_LABELS: Record<InspectionStatus, string> = {
   planifie: "Planifié",
@@ -102,13 +125,34 @@ export default function EtatsDesLieuxPage() {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [signingInspectionId, setSigningInspectionId] = useState<string | null>(null);
   const [tenantSignatureName, setTenantSignatureName] = useState("");
+  const [editingInspectionId, setEditingInspectionId] = useState<string | null>(null);
+  const [editScheduledAt, setEditScheduledAt] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [editEntreeNotes, setEditEntreeNotes] = useState("");
+  const [editSortieNotes, setEditSortieNotes] = useState("");
   const signatureCanvasRef = useRef<HTMLCanvasElement>(null);
   const signatureDrawingRef = useRef(false);
+
+  async function readApiErrorMessage(res: Response, fallback: string): Promise<string> {
+    try {
+      const payload = (await res.json()) as { message?: string | string[] };
+      if (Array.isArray(payload?.message)) {
+        return payload.message.join(" | ");
+      }
+      if (typeof payload?.message === "string" && payload.message.trim()) {
+        return payload.message;
+      }
+    } catch {
+      // ignore
+    }
+
+    return fallback;
+  }
 
   async function loadTargets() {
     if (!(user?.role === "admin" || user?.role === "agent")) return;
     try {
-      const res = await fetch(`${API_URL}/tenants`, { headers: apiHeaders });
+      const res = await fetchApi("/tenants", { headers: apiHeaders });
       if (!res.ok) return;
       const tenants = (await res.json()) as Tenant[];
       const mapped = tenants.map((item): InspectionTarget => ({
@@ -140,7 +184,7 @@ export default function EtatsDesLieuxPage() {
 
   async function loadPropertiesForRent() {
     try {
-      const res = await fetch(`${API_URL}/properties`, { headers: apiHeaders });
+      const res = await fetchApi("/properties", { headers: apiHeaders });
       if (!res.ok) return;
       const properties = (await res.json()) as Property[];
       const rentMap: Record<string, number> = {};
@@ -161,9 +205,9 @@ export default function EtatsDesLieuxPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/inspections`, { headers: apiHeaders });
+      const res = await fetchApi("/inspections", { headers: apiHeaders });
       if (!res.ok) {
-        throw new Error(`Erreur etats des lieux (${res.status})`);
+        throw new Error(await readApiErrorMessage(res, `Erreur etats des lieux (${res.status})`));
       }
       setItems((await res.json()) as Inspection[]);
     } catch (err) {
@@ -210,7 +254,7 @@ export default function EtatsDesLieuxPage() {
     }
 
     try {
-      const res = await fetch(`${API_URL}/inspections`, {
+      const res = await fetchApi("/inspections", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...apiHeaders },
         body: JSON.stringify({
@@ -223,7 +267,7 @@ export default function EtatsDesLieuxPage() {
           sortieNotes,
         }),
       });
-      if (!res.ok) throw new Error(`Creation impossible (${res.status})`);
+      if (!res.ok) throw new Error(await readApiErrorMessage(res, `Creation impossible (${res.status})`));
       setShowCreateForm(false);
       setNotes(""); setEntreeNotes(""); setSortieNotes("");
       await load();
@@ -235,12 +279,12 @@ export default function EtatsDesLieuxPage() {
   async function updateStatus(id: string, status: InspectionStatus) {
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/inspections/${id}`, {
+      const res = await fetchApi(`/inspections/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...apiHeaders },
         body: JSON.stringify({ status }),
       });
-      if (!res.ok) throw new Error(`Mise a jour impossible (${res.status})`);
+      if (!res.ok) throw new Error(await readApiErrorMessage(res, `Mise a jour impossible (${res.status})`));
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur inconnue");
@@ -339,7 +383,7 @@ export default function EtatsDesLieuxPage() {
 
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/inspections/${signingInspectionId}/sign`, {
+      const res = await fetchApi(`/inspections/${signingInspectionId}/sign`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -351,9 +395,7 @@ export default function EtatsDesLieuxPage() {
         }),
       });
 
-      if (!res.ok) {
-        throw new Error(`Signature impossible (${res.status})`);
-      }
+      if (!res.ok) throw new Error(await readApiErrorMessage(res, `Signature impossible (${res.status})`));
 
       setSigningInspectionId(null);
       await load();
@@ -370,12 +412,12 @@ export default function EtatsDesLieuxPage() {
 
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/inspections/${id}`, {
+      const res = await fetchApi(`/inspections/${id}`, {
         method: "DELETE",
         headers: apiHeaders,
       });
       if (!res.ok) {
-        throw new Error(`Suppression impossible (${res.status})`);
+        throw new Error(await readApiErrorMessage(res, `Suppression impossible (${res.status})`));
       }
 
       await load();
@@ -406,12 +448,12 @@ export default function EtatsDesLieuxPage() {
       const form = new FormData();
       form.append("file", file);
       form.append("phase", phase);
-      const res = await fetch(`${API_URL}/inspections/${id}/photos`, {
+      const res = await fetchApi(`/inspections/${id}/photos`, {
         method: "POST",
         headers: apiHeaders, // pas de Content-Type: multipart auto
         body: form,
       });
-      if (!res.ok) throw new Error(`Upload impossible (${res.status})`);
+      if (!res.ok) throw new Error(await readApiErrorMessage(res, `Upload impossible (${res.status})`));
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur inconnue");
@@ -421,9 +463,46 @@ export default function EtatsDesLieuxPage() {
     }
   }
 
+  function openEditInspection(item: Inspection) {
+    setEditingInspectionId(item.id);
+    setEditScheduledAt(item.scheduledAt.slice(0, 16));
+    setEditNotes(item.notes ?? "");
+    setEditEntreeNotes(item.entreeNotes ?? "");
+    setEditSortieNotes(item.sortieNotes ?? "");
+  }
+
+  async function saveInspectionEdits() {
+    if (!editingInspectionId) {
+      return;
+    }
+
+    setError(null);
+    try {
+      const res = await fetchApi(`/inspections/${editingInspectionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...apiHeaders },
+        body: JSON.stringify({
+          scheduledAt: new Date(editScheduledAt).toISOString(),
+          notes: editNotes,
+          entreeNotes: editEntreeNotes,
+          sortieNotes: editSortieNotes,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(await readApiErrorMessage(res, `Mise a jour impossible (${res.status})`));
+      }
+
+      setEditingInspectionId(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur inconnue");
+    }
+  }
+
   const canCreate = user?.role === "admin" || user?.role === "agent";
   const canManage = user?.role === "admin" || user?.role === "agent" || user?.role === "proprietaire";
-  const canSign = user?.role === "locataire";
+  const canSign = user?.role === "locataire" || user?.role === "admin" || user?.role === "agent" || user?.role === "proprietaire";
   const canUpload = user?.role === "admin" || user?.role === "agent";
   const groupedByProperty = items.reduce<Record<string, Inspection[]>>((acc, inspection) => {
     const key = inspection.propertyId || "unknown-property";
@@ -461,6 +540,63 @@ export default function EtatsDesLieuxPage() {
         className="hidden"
         onChange={onFileSelected}
       />
+
+      {editingInspectionId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+            <h2 className="text-lg font-bold text-slate-900">Modifier planification et notes</h2>
+            <p className="mt-1 text-xs text-slate-500">Ajustez la date planifiée et les observations.</p>
+
+            <div className="mt-4 grid grid-cols-1 gap-3">
+              <input
+                type="datetime-local"
+                value={editScheduledAt}
+                onChange={(e) => setEditScheduledAt(e.target.value)}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+              <input
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                placeholder="Notes générales"
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <textarea
+                  value={editEntreeNotes}
+                  onChange={(e) => setEditEntreeNotes(e.target.value)}
+                  placeholder="Notes d'entrée"
+                  rows={3}
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+                <textarea
+                  value={editSortieNotes}
+                  onChange={(e) => setEditSortieNotes(e.target.value)}
+                  placeholder="Notes de sortie"
+                  rows={3}
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingInspectionId(null)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveInspectionEdits()}
+                className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100"
+              >
+                Enregistrer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="mx-auto w-full max-w-7xl space-y-6">
         <header className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -749,6 +885,7 @@ export default function EtatsDesLieuxPage() {
                   <div className="ml-auto flex flex-wrap gap-2">
                     {canManage && (
                       <>
+                        <button onClick={() => openEditInspection(item)} className="rounded border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100">Planif/notes</button>
                         <button onClick={() => updateStatus(item.id, "realise")} className="rounded border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100">Marquer réalisé</button>
                         <button onClick={() => updateStatus(item.id, "valide")} className="rounded border border-green-200 bg-green-50 px-3 py-1 text-xs font-semibold text-green-700 hover:bg-green-100">Valider</button>
                         <button onClick={() => void deleteInspection(item.id)} className="rounded border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100">Supprimer</button>
