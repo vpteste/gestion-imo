@@ -12,6 +12,29 @@ import type { UserRole } from "@gestion/shared";
 
 const STORAGE_KEY = "gestion_token";
 const API_URL = process.env.NODE_ENV === "production" ? "/api" : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001");
+const PROD_API_FALLBACK = process.env.NEXT_PUBLIC_API_URL ?? "https://gestion-imo-api.onrender.com";
+
+function apiBases(): string[] {
+  if (process.env.NODE_ENV === "production") {
+    return [API_URL, PROD_API_FALLBACK];
+  }
+
+  return [API_URL];
+}
+
+async function fetchApi(path: string, init?: RequestInit): Promise<Response> {
+  let lastError: unknown;
+
+  for (const base of apiBases()) {
+    try {
+      return await fetch(`${base}${path}`, init);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("API inaccessible");
+}
 
 export type AuthUser = {
   id: string;
@@ -55,11 +78,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    const response = await fetch(`${API_URL}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
+    let response: Response;
+    try {
+      response = await fetchApi("/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+    } catch {
+      throw new Error("Connexion impossible: internet indisponible ou serveur inaccessible");
+    }
 
     if (!response.ok) {
       const body = (await response.json().catch(() => ({}))) as {

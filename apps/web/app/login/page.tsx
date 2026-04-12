@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../context/auth";
+import { useResilience } from "../context/resilience";
 import { getDefaultRouteForRole } from "../lib/rbac";
 
 // No demo accounts in production
@@ -10,6 +11,7 @@ const DEMO_ACCOUNTS: never[] = [];
 
 export default function LoginPage() {
   const { login } = useAuth();
+  const { isOnline, apiReachable } = useResilience();
   const router = useRouter();
 
   const [email, setEmail]       = useState("");
@@ -78,6 +80,12 @@ export default function LoginPage() {
           {error && (
             <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {error}
+            </p>
+          )}
+
+          {(!isOnline || !apiReachable) && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Connexion instable ou serveur indisponible. Vérifiez votre internet puis réessayez.
             </p>
           )}
 

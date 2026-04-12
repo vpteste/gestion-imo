@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { AuthProvider } from "./context/auth";
+import { ResilienceProvider } from "./context/resilience";
 import Navbar from "./components/Navbar";
+import ResilienceBanner from "./components/ResilienceBanner";
 import RouteGuard from "./components/RouteGuard";
 import "./globals.css";
 
@@ -14,8 +16,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="fr">
       <body>
         <AuthProvider>
-          <Navbar />
-          <RouteGuard>{children}</RouteGuard>
+          <ResilienceProvider>
+            <Navbar />
+            <ResilienceBanner />
+            <RouteGuard>{children}</RouteGuard>
+          </ResilienceProvider>
         </AuthProvider>
       </body>
     </html>
