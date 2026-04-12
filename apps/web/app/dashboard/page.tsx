@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import Link from "next/link";
 import { useAuth } from "../context/auth";
+import LoadingVideo from "../components/LoadingVideo";
 
 type Summary = {
   totals: {
@@ -153,7 +154,9 @@ export default function DashboardPage() {
           <p className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</p>
         )}
         {!summary && !error && (
-          <p className="py-12 text-center text-sm text-slate-500">Chargement…</p>
+          <div className="py-8">
+            <LoadingVideo label="Chargement..." size="lg" />
+          </div>
         )}
 
         {summary && (

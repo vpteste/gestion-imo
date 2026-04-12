@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../context/auth";
+import LoadingVideo from "./LoadingVideo";
 
 type NotificationItem = {
   id: string;
@@ -181,7 +182,9 @@ export default function NotificationsBell() {
 
           <div className="max-h-96 overflow-y-auto">
             {loading ? (
-              <p className="px-4 py-8 text-center text-sm text-slate-500">Chargement…</p>
+              <div className="px-4 py-6">
+                <LoadingVideo label="Chargement..." size="md" />
+              </div>
             ) : items.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-slate-500">Aucune notification</p>
             ) : (

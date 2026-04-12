@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useAuth } from "../context/auth";
+import LoadingVideo from "../components/LoadingVideo";
 
 type UserRole = "admin" | "agent" | "proprietaire" | "locataire";
 type ManagedRole = Exclude<UserRole, "locataire">;
@@ -809,7 +810,11 @@ export default function GestionUtilisateursPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
-                  <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-500">Chargement...</td></tr>
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8">
+                      <LoadingVideo label="Chargement..." size="md" />
+                    </td>
+                  </tr>
                 ) : filteredUsers.length === 0 ? (
                   <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-500">Aucun utilisateur</td></tr>
                 ) : (

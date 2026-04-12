@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "../context/auth";
+import LoadingVideo from "../components/LoadingVideo";
 
 type InspectionType = "entree" | "sortie";
 type InspectionStatus = "planifie" | "realise" | "valide";
@@ -738,7 +739,9 @@ export default function EtatsDesLieuxPage() {
 
         <section className="grid grid-cols-1 gap-5">
           {loading ? (
-            <p className="rounded-xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-500">Chargementâ€¦</p>
+            <div className="rounded-xl border border-slate-200 bg-white p-6">
+              <LoadingVideo label="Chargement..." size="lg" />
+            </div>
           ) : items.length === 0 ? (
             <p className="rounded-xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-500">Aucun état des lieux</p>
           ) : (

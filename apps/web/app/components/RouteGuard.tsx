@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "../context/auth";
 import { getDefaultRouteForRole, isRouteAllowed } from "../lib/rbac";
+import LoadingVideo from "./LoadingVideo";
 
 const PUBLIC_ROUTES = new Set(["/login", "/acces-refuse"]);
 
@@ -29,7 +30,11 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
   }, [isLoading, user, isPublicRoute, pathname, router]);
 
   if (isLoading) {
-    return <div className="px-4 py-10 text-center text-sm text-slate-500">Chargement session...</div>;
+    return (
+      <div className="px-4 py-10">
+        <LoadingVideo label="Chargement session..." size="lg" />
+      </div>
+    );
   }
 
   if (!user && !isPublicRoute) {
