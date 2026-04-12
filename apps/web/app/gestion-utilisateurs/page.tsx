@@ -40,6 +40,15 @@ type ActivityLog = {
   durationMs?: number;
 };
 
+type AgentBusinessAction = {
+  id: string;
+  timestamp: string;
+  action: string;
+  module: string;
+  detail: string;
+  statusCode: number;
+};
+
 const API_URL = process.env.NODE_ENV === "production" ? "/api" : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001");
 const PROD_API_FALLBACK = process.env.NEXT_PUBLIC_API_URL ?? "https://gestion-imo-api.onrender.com";
 
@@ -90,6 +99,7 @@ export default function GestionUtilisateursPage() {
   const [savingPasswordUserId, setSavingPasswordUserId] = useState<string | null>(null);
   const [agentActivityUserId, setAgentActivityUserId] = useState<string | null>(null);
   const [agentLogs, setAgentLogs] = useState<ActivityLog[]>([]);
+  const [agentBusinessActions, setAgentBusinessActions] = useState<AgentBusinessAction[]>([]);
   const [agentLogsLoading, setAgentLogsLoading] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [search, setSearch] = useState("");
@@ -467,17 +477,66 @@ export default function GestionUtilisateursPage() {
   async function viewAgentActivity(agentUser: ManagedUser) {
     setAgentActivityUserId(agentUser.id);
     setAgentLogs([]);
+    setAgentBusinessActions([]);
     setAgentLogsLoading(true);
     try {
       const res = await fetchApi(`/activity-logs?actorId=${agentUser.id}&limit=100`, { headers: apiHeaders });
       if (res.ok) {
-        setAgentLogs((await res.json()) as ActivityLog[]);
+        const logs = (await res.json()) as ActivityLog[];
+        setAgentLogs(logs);
+        setAgentBusinessActions(logs.map(toBusinessAction).filter((item): item is AgentBusinessAction => !!item));
       }
     } catch {
       // ignore
     } finally {
       setAgentLogsLoading(false);
     }
+  }
+
+  function toBusinessAction(log: ActivityLog): AgentBusinessAction | null {
+    const method = log.method.toUpperCase();
+    if (!["POST", "PATCH", "PUT", "DELETE"].includes(method)) {
+      return null;
+    }
+
+    const cleanPath = log.path.split("?")[0] ?? log.path;
+
+    const rules: Array<{ re: RegExp; action: string; module: string; detail?: string }> = [
+      { re: /^\/properties$/, action: "Ajout bien", module: "Biens" },
+      { re: /^\/properties\/.+$/, action: method === "DELETE" ? "Suppression bien" : "Modification bien", module: "Biens" },
+      { re: /^\/tenants$/, action: "Ajout locataire", module: "Locataires" },
+      { re: /^\/tenants\/.+$/, action: method === "DELETE" ? "Suppression locataire" : "Modification locataire", module: "Locataires" },
+      { re: /^\/payments$/, action: "Enregistrement paiement", module: "Paiements" },
+      { re: /^\/payments\/[^/]+\/reminder$/, action: "Envoi rappel paiement", module: "Paiements" },
+      { re: /^\/payments\/.+$/, action: method === "DELETE" ? "Suppression paiement" : "Mise a jour paiement", module: "Paiements" },
+      { re: /^\/contracts$/, action: "Création contrat", module: "Contrats" },
+      { re: /^\/contracts\/.+$/, action: method === "DELETE" ? "Suppression contrat" : "Mise a jour contrat", module: "Contrats" },
+      { re: /^\/inspections$/, action: "Planification état des lieux", module: "Etats des lieux" },
+      { re: /^\/inspections\/[^/]+\/photos$/, action: "Ajout photo état des lieux", module: "Etats des lieux" },
+      { re: /^\/inspections\/[^/]+\/sign$/, action: "Signature état des lieux", module: "Etats des lieux" },
+      { re: /^\/inspections\/.+$/, action: method === "DELETE" ? "Suppression état des lieux" : "Mise a jour état des lieux", module: "Etats des lieux" },
+      { re: /^\/incidents$/, action: "Création incident", module: "Incidents" },
+      { re: /^\/incidents\/.+$/, action: method === "DELETE" ? "Suppression incident" : "Mise a jour incident", module: "Incidents" },
+      { re: /^\/auth\/users\/provision$/, action: "Création compte", module: "Utilisateurs" },
+      { re: /^\/auth\/users\/[^/]+\/role$/, action: "Modification rôle utilisateur", module: "Utilisateurs" },
+      { re: /^\/auth\/users\/[^/]+\/password$/, action: "Modification mot de passe", module: "Utilisateurs" },
+      { re: /^\/auth\/users\/[^/]+\/suspend$/, action: "Suspension utilisateur", module: "Utilisateurs" },
+      { re: /^\/auth\/users\/[^/]+\/reactivate$/, action: "Réactivation utilisateur", module: "Utilisateurs" },
+    ];
+
+    const matched = rules.find((rule) => rule.re.test(cleanPath));
+    if (!matched) {
+      return null;
+    }
+
+    return {
+      id: log.id,
+      timestamp: log.timestamp,
+      action: matched.action,
+      module: matched.module,
+      detail: cleanPath,
+      statusCode: log.statusCode,
+    };
   }
 
   function openIdentityEditor(item: ManagedUser) {
@@ -1104,32 +1163,26 @@ export default function GestionUtilisateursPage() {
               <div className="flex-1 overflow-y-auto p-4">
                 {agentLogsLoading ? (
                   <p className="py-12 text-center text-sm text-slate-500">Chargement des activités...</p>
-                ) : agentLogs.length === 0 ? (
-                  <p className="py-12 text-center text-sm text-slate-400">Aucune activité enregistrée pour cet agent</p>
+                ) : agentBusinessActions.length === 0 ? (
+                  <p className="py-12 text-center text-sm text-slate-400">Aucune action métier trouvée pour cet agent</p>
                 ) : (
                   <table className="min-w-full text-xs">
                     <thead>
                       <tr className="border-b border-slate-200">
+                        <th className="py-2 pr-4 text-left font-semibold text-slate-500">Action</th>
+                        <th className="py-2 pr-4 text-left font-semibold text-slate-500">Module</th>
+                        <th className="py-2 pr-4 text-left font-semibold text-slate-500">Détail</th>
                         <th className="py-2 pr-4 text-left font-semibold text-slate-500">Date / Heure</th>
-                        <th className="py-2 pr-4 text-left font-semibold text-slate-500">Méthode</th>
-                        <th className="py-2 pr-4 text-left font-semibold text-slate-500">Endpoint</th>
                         <th className="py-2 pr-4 text-left font-semibold text-slate-500">Statut</th>
-                        <th className="py-2 text-left font-semibold text-slate-500">Durée</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {agentLogs.map((log) => (
+                      {agentBusinessActions.map((log) => (
                         <tr key={log.id} className="hover:bg-slate-50">
+                          <td className="py-2 pr-4 font-semibold text-slate-700">{log.action}</td>
+                          <td className="py-2 pr-4 text-slate-600">{log.module}</td>
+                          <td className="py-2 pr-4 font-mono text-slate-600">{log.detail}</td>
                           <td className="py-2 pr-4 text-slate-600">{new Date(log.timestamp).toLocaleString("fr-FR")}</td>
-                          <td className="py-2 pr-4">
-                            <span className={`rounded px-1.5 py-0.5 font-bold uppercase ${
-                              log.method === "GET" ? "bg-blue-50 text-blue-700"
-                              : log.method === "POST" ? "bg-green-50 text-green-700"
-                              : log.method === "PATCH" || log.method === "PUT" ? "bg-amber-50 text-amber-700"
-                              : "bg-rose-50 text-rose-700"
-                            }`}>{log.method}</span>
-                          </td>
-                          <td className="py-2 pr-4 font-mono text-slate-700">{log.path}</td>
                           <td className="py-2 pr-4">
                             <span className={`rounded px-1.5 py-0.5 font-bold ${
                               log.statusCode < 300 ? "bg-green-50 text-green-700"
@@ -1137,7 +1190,6 @@ export default function GestionUtilisateursPage() {
                               : "bg-rose-50 text-rose-700"
                             }`}>{log.statusCode}</span>
                           </td>
-                          <td className="py-2 text-slate-400">{log.durationMs != null ? `${log.durationMs}ms` : "-"}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1145,7 +1197,7 @@ export default function GestionUtilisateursPage() {
                 )}
               </div>
               <div className="border-t border-slate-100 px-5 py-3 text-xs text-slate-400">
-                {agentLogs.length > 0 && `${agentLogs.length} action(s) — 100 dernières au max`}
+                {agentBusinessActions.length > 0 && `${agentBusinessActions.length} action(s) métier — 100 dernières requêtes analysées`}
               </div>
             </div>
           </div>
