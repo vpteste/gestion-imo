@@ -112,19 +112,21 @@ export default function Navbar() {
           <span className="text-sm font-semibold text-teal-900">{BRAND_NAME}</span>
         </Link>
 
-        {visibleLinks.map(({ href, label }) => (
-          <Link
-            key={href}
-            href={href}
-            className={`rounded-lg border px-3 py-1 text-sm font-semibold transition-colors ${
-              pathname === href
-                ? "border-indigo-500 bg-indigo-50 text-indigo-700"
-                : "border-slate-300 text-slate-800 hover:bg-slate-100"
-            }`}
-          >
-            {label}
-          </Link>
-        ))}
+        <div className="mobile-scroll-x flex max-w-full flex-nowrap items-center gap-2">
+          {visibleLinks.map(({ href, label }) => (
+            <Link
+              key={href}
+              href={href}
+              className={`whitespace-nowrap rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors sm:px-3 sm:text-sm ${
+                pathname === href
+                  ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                  : "border-slate-300 text-slate-800 hover:bg-slate-100"
+              }`}
+            >
+              {label}
+            </Link>
+          ))}
+        </div>
 
         <div className="ml-auto flex items-center gap-3">
           {isLoading ? null : user ? (

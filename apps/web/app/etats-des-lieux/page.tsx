@@ -4,6 +4,8 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "../context/auth";
 import LoadingVideo from "../components/LoadingVideo";
+import { exportVisibleRowsToCsv } from "../lib/csv";
+import { fetchWithRetry } from "../lib/network";
 
 type InspectionType = "entree" | "sortie";
 type InspectionStatus = "planifie" | "realise" | "valide";
@@ -72,6 +74,22 @@ function apiBases(): string[] {
 }
 
 async function fetchApi(path: string, init?: RequestInit): Promise<Response> {
+  const method = init?.method?.toUpperCase() ?? "GET";
+
+  if (method === "GET") {
+    return fetchWithRetry(async () => {
+      let lastError: unknown;
+      for (const base of apiBases()) {
+        try {
+          return await fetch(`${base}${path}`, init);
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      throw lastError instanceof Error ? lastError : new Error("API inaccessible");
+    }, { retries: 2, delayMs: 700 });
+  }
+
   let lastError: unknown;
 
   for (const base of apiBases()) {
@@ -524,6 +542,28 @@ export default function EtatsDesLieuxPage() {
   }, {});
   const propertyGroups = Object.entries(groupedByProperty).sort((a, b) => a[0].localeCompare(b[0]));
 
+  function exportVisibleInspectionsCsv() {
+    const rows = items.map((item) => ({
+      type: item.type,
+      statut: STATUS_LABELS[item.status],
+      bien: propertyLabelById[item.propertyId] ?? item.propertyId,
+      bail: leaseReferenceById[item.leaseId] ?? item.leaseId,
+      planifieLe: new Date(item.scheduledAt).toLocaleString("fr-FR"),
+      notes: item.notes ?? "",
+      signature: item.signedByTenantAt ? "signee" : "non signee",
+    }));
+
+    exportVisibleRowsToCsv("etats-des-lieux-visibles.csv", rows, [
+      { key: "type", label: "Type" },
+      { key: "statut", label: "Statut" },
+      { key: "bien", label: "Bien" },
+      { key: "bail", label: "Bail" },
+      { key: "planifieLe", label: "Planifie le" },
+      { key: "notes", label: "Notes" },
+      { key: "signature", label: "Signature locataire" },
+    ]);
+  }
+
   return (
     <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-10">
       {/* Lightbox */}
@@ -616,12 +656,20 @@ export default function EtatsDesLieuxPage() {
               <p className="mt-1 text-xs text-slate-500">Juridiction et clauses: droit immobilier de la Republique de Cote d'Ivoire.</p>
             </div>
             {canCreate && (
-              <button
-                onClick={() => setShowCreateForm((prev) => !prev)}
-                className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100"
-              >
-                {showCreateForm ? "Fermer le formulaire" : "+ Nouvel état des lieux"}
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => exportVisibleInspectionsCsv()}
+                  className="rounded-xl border border-teal-300 bg-teal-50 px-4 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-100"
+                >
+                  Export CSV
+                </button>
+                <button
+                  onClick={() => setShowCreateForm((prev) => !prev)}
+                  className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100"
+                >
+                  {showCreateForm ? "Fermer le formulaire" : "+ Nouvel état des lieux"}
+                </button>
+              </div>
             )}
           </div>
         </header>

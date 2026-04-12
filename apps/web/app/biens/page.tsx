@@ -4,6 +4,8 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import type { BiensCarteProperty } from "../components/BiensCarte";
 import { useAuth } from "../context/auth";
+import { exportVisibleRowsToCsv } from "../lib/csv";
+import { fetchWithRetry } from "../lib/network";
 
 // Chargement côté client uniquement (Leaflet requiert le DOM)
 const BiensCarte = dynamic(() => import("../components/BiensCarte"), { ssr: false });
@@ -72,9 +74,10 @@ export default function BiensPage() {
     setError(null);
 
     try {
-      const response = await fetch(`${API_URL}/properties`, {
-        headers: apiHeaders,
-      });
+      const response = await fetchWithRetry(
+        () => fetch(`${API_URL}/properties`, { headers: apiHeaders }),
+        { retries: 2, delayMs: 700 },
+      );
 
       if (!response.ok) {
         throw new Error(`Erreur API (${response.status})`);
@@ -203,6 +206,26 @@ export default function BiensPage() {
     void loadProperties();
   }, []);
 
+  function exportVisiblePropertiesCsv() {
+    const rows = filteredProperties.map((property) => ({
+      reference: property.reference || property.id,
+      titre: property.title,
+      type: property.propertyType,
+      ville: property.city,
+      loyer: `${property.rentAmount}`,
+      charges: `${property.chargesAmount}`,
+    }));
+
+    exportVisibleRowsToCsv("biens-visibles.csv", rows, [
+      { key: "reference", label: "Reference" },
+      { key: "titre", label: "Titre" },
+      { key: "type", label: "Type" },
+      { key: "ville", label: "Ville" },
+      { key: "loyer", label: "Loyer FCFA" },
+      { key: "charges", label: "Charges FCFA" },
+    ]);
+  }
+
   return (
     <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-10">
       <div className="mx-auto w-full max-w-7xl space-y-6">
@@ -235,7 +258,7 @@ export default function BiensPage() {
           </article>
           <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-xs uppercase tracking-wide text-slate-500">Etat</p>
-            <div className="mt-2 flex items-center gap-2">
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               <select
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value as "all" | "apartment" | "house" | "studio" | "land")}
@@ -248,6 +271,12 @@ export default function BiensPage() {
                 <option value="land">Terrain (vente)</option>
               </select>
               <span className="text-sm font-medium text-slate-700">{loading ? "Chargement..." : "Synchronise"}</span>
+              <button
+                onClick={() => exportVisiblePropertiesCsv()}
+                className="rounded-lg border border-teal-300 bg-teal-50 px-2 py-1 text-xs font-semibold text-teal-700 hover:bg-teal-100"
+              >
+                Export CSV
+              </button>
             </div>
           </article>
         </section>
@@ -354,8 +383,8 @@ export default function BiensPage() {
             {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
             {message && <p className="mt-3 text-sm text-green-700">{message}</p>}
 
-            <div className="mt-4 overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 text-sm">
+            <div className="mobile-scroll-x mt-4 overflow-x-auto">
+              <table className="mobile-table min-w-full divide-y divide-slate-200 text-sm">
                 <thead>
                   <tr className="text-left text-slate-500">
                     <th className="py-2 pr-4">Reference</th>

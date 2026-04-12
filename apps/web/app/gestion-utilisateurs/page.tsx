@@ -3,6 +3,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useAuth } from "../context/auth";
 import LoadingVideo from "../components/LoadingVideo";
+import { exportVisibleRowsToCsv } from "../lib/csv";
+import { fetchWithRetry } from "../lib/network";
 
 type UserRole = "admin" | "agent" | "proprietaire" | "locataire";
 type ManagedRole = Exclude<UserRole, "locataire">;
@@ -69,6 +71,23 @@ function apiBases(): string[] {
 }
 
 async function fetchApi(path: string, init?: RequestInit): Promise<Response> {
+  const method = init?.method?.toUpperCase() ?? "GET";
+
+  if (method === "GET") {
+    return fetchWithRetry(async () => {
+      let lastError: unknown;
+      for (const base of apiBases()) {
+        try {
+          return await fetch(`${base}${path}`, init);
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      throw lastError instanceof Error ? lastError : new Error("API inaccessible");
+    }, { retries: 2, delayMs: 700 });
+  }
+
   let lastError: unknown;
 
   for (const base of apiBases()) {
@@ -705,6 +724,26 @@ export default function GestionUtilisateursPage() {
     return matchesSearch && matchesRole && matchesStatus;
   });
 
+  function exportVisibleUsersCsv() {
+    const rows = filteredUsers.map((item) => ({
+      nom: item.fullName,
+      email: item.email,
+      role: item.role,
+      statut: STATUS_LABELS[item.status],
+      agence: item.identityLinks?.agency ?? "",
+      identifiantAgent: item.identityLinks?.agentCode ?? "",
+    }));
+
+    exportVisibleRowsToCsv("utilisateurs-visibles.csv", rows, [
+      { key: "nom", label: "Nom" },
+      { key: "email", label: "Email" },
+      { key: "role", label: "Role" },
+      { key: "statut", label: "Statut" },
+      { key: "agence", label: "Agence" },
+      { key: "identifiantAgent", label: "Identifiant agent" },
+    ]);
+  }
+
   const kpis = {
     total: managementUsers.length,
     pending: managementUsers.filter((u) => u.status === "pending").length,
@@ -815,7 +854,7 @@ export default function GestionUtilisateursPage() {
         {error && <p className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</p>}
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -842,12 +881,18 @@ export default function GestionUtilisateursPage() {
               <option value="active">Actif</option>
               <option value="suspended">Suspendu</option>
             </select>
+            <button
+              onClick={() => exportVisibleUsersCsv()}
+              className="rounded-lg border border-teal-300 bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-100"
+            >
+              Export CSV
+            </button>
           </div>
         </section>
 
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
+          <div className="mobile-scroll-x overflow-x-auto">
+            <table className="mobile-table min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold text-slate-700">Utilisateur</th>

@@ -3,6 +3,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "../context/auth";
+import { exportVisibleRowsToCsv } from "../lib/csv";
+import { fetchWithRetry } from "../lib/network";
 
 type TenantStatus = "actif" | "inactif" | "en_attente";
 
@@ -85,7 +87,10 @@ export default function LocatairesPage() {
 
   async function loadProperties() {
     try {
-      const response = await fetch(`${API_URL}/properties`, { headers: apiHeaders });
+      const response = await fetchWithRetry(
+        () => fetch(`${API_URL}/properties`, { headers: apiHeaders }),
+        { retries: 2, delayMs: 700 },
+      );
       if (!response.ok) return;
       setProperties((await response.json()) as Property[]);
     } catch {
@@ -98,7 +103,10 @@ export default function LocatairesPage() {
     setError(null);
 
     try {
-      const response = await fetch(`${API_URL}/tenants`, { headers: apiHeaders });
+      const response = await fetchWithRetry(
+        () => fetch(`${API_URL}/tenants`, { headers: apiHeaders }),
+        { retries: 2, delayMs: 700 },
+      );
 
       if (!response.ok) {
         throw new Error(`Erreur API (${response.status})`);
@@ -324,6 +332,29 @@ export default function LocatairesPage() {
     ].join(" ").toLowerCase().includes(q);
   });
 
+  function exportVisibleTenantsCsv() {
+    const rows = filtered.map((tenant) => ({
+      nom: `${tenant.firstName} ${tenant.lastName}`.trim(),
+      email: tenant.email,
+      bien: tenant.currentPropertyReference
+        ?? (tenant.currentPropertyId ? propertyReferenceById[tenant.currentPropertyId] : undefined)
+        ?? tenant.currentPropertyId
+        ?? "",
+      bail: tenant.leaseReference ?? tenant.leaseId ?? "",
+      loyer: tenant.monthlyIncome != null ? `${tenant.monthlyIncome}` : "",
+      statut: STATUS_LABELS[tenant.status],
+    }));
+
+    exportVisibleRowsToCsv("locataires-visibles.csv", rows, [
+      { key: "nom", label: "Nom" },
+      { key: "email", label: "Email" },
+      { key: "bien", label: "Bien" },
+      { key: "bail", label: "Bail" },
+      { key: "loyer", label: "Loyer FCFA" },
+      { key: "statut", label: "Statut" },
+    ]);
+  }
+
   return (
     <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-10">
       <div className="mx-auto w-full max-w-7xl space-y-6">
@@ -499,11 +530,11 @@ export default function LocatairesPage() {
 
           {/* Table locataires */}
           <div className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ${canManage && showCreateForm ? "xl:col-span-2" : "xl:col-span-3"}`}>
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mobile-sticky-actions mb-4 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-base font-semibold text-slate-800">
                 Locataires{filterStatus !== "tous" ? ` — ${STATUS_LABELS[filterStatus as TenantStatus]}` : ""}
               </h2>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {message && <span className="text-xs text-emerald-700">{message}</span>}
                 <input
                   value={search}
@@ -511,12 +542,18 @@ export default function LocatairesPage() {
                   placeholder="Rechercher un locataire..."
                   className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs"
                 />
+                <button
+                  onClick={() => exportVisibleTenantsCsv()}
+                  className="rounded-lg border border-teal-300 bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-700 hover:bg-teal-100"
+                >
+                  Export CSV
+                </button>
                 {loading && <span className="text-xs text-slate-400">Chargement…</span>}
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 text-sm">
+            <div className="mobile-scroll-x overflow-x-auto">
+              <table className="mobile-table min-w-full divide-y divide-slate-200 text-sm">
                 <thead>
                   <tr className="text-left text-xs font-medium uppercase tracking-wide text-slate-500">
                     <th className="py-2 pr-4">Nom</th>

@@ -12,3 +12,23 @@ body {
   background: linear-gradient(180deg, #f7faf8 0%, #ffffff 45%, #eef6f1 100%);
   color: #123224;
 }
+
+@media (max-width: 640px) {
+  .mobile-scroll-x {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .mobile-table {
+    min-width: 760px;
+  }
+
+  .mobile-sticky-actions {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(6px);
+  }
+}
