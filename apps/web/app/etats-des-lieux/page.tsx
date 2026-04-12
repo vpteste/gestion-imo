@@ -61,6 +61,7 @@ type InspectionTarget = {
 
 const API_URL = process.env.NODE_ENV === "production" ? "/api" : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001");
 const PROD_API_FALLBACK = process.env.NEXT_PUBLIC_API_URL ?? "https://gestion-imo-api.onrender.com";
+const MEDIA_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://gestion-imo-api.onrender.com";
 
 function apiBases(): string[] {
   if (process.env.NODE_ENV === "production") {
@@ -82,6 +83,13 @@ async function fetchApi(path: string, init?: RequestInit): Promise<Response> {
   }
 
   throw lastError instanceof Error ? lastError : new Error("API inaccessible");
+}
+
+function resolveMediaUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+  return `${MEDIA_BASE_URL}${path}`;
 }
 
 const STATUS_LABELS: Record<InspectionStatus, string> = {
@@ -813,13 +821,13 @@ export default function EtatsDesLieuxPage() {
                       {item.entreePhotos.map((photo) => (
                         <button
                           key={photo.filename}
-                          onClick={() => setLightboxUrl(`${API_URL}${photo.url}`)}
+                          onClick={() => setLightboxUrl(resolveMediaUrl(photo.url))}
                           className="group relative h-20 w-20 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 hover:border-teal-400"
                           title={`Chargé le ${new Date(photo.uploadedAt).toLocaleString("fr-FR")}`}
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
-                            src={`${API_URL}${photo.url}`}
+                            src={resolveMediaUrl(photo.url)}
                             alt="Photo entrée"
                             className="h-full w-full object-cover group-hover:opacity-90"
                           />
@@ -852,13 +860,13 @@ export default function EtatsDesLieuxPage() {
                       {item.sortiePhotos.map((photo) => (
                         <button
                           key={photo.filename}
-                          onClick={() => setLightboxUrl(`${API_URL}${photo.url}`)}
+                          onClick={() => setLightboxUrl(resolveMediaUrl(photo.url))}
                           className="group relative h-20 w-20 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 hover:border-orange-400"
                           title={`Chargé le ${new Date(photo.uploadedAt).toLocaleString("fr-FR")}`}
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
-                            src={`${API_URL}${photo.url}`}
+                            src={resolveMediaUrl(photo.url)}
                             alt="Photo sortie"
                             className="h-full w-full object-cover group-hover:opacity-90"
                           />
