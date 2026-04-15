@@ -11,8 +11,8 @@ import {
 import type { UserRole } from "@gestion/shared";
 
 const STORAGE_KEY = "gestion_token";
-const API_URL = process.env.NODE_ENV === "production" ? "/api" : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001");
-const PROD_API_FALLBACK = process.env.NEXT_PUBLIC_API_URL ?? "https://gestion-imo-api.onrender.com";
+const PROD_API_FALLBACK = process.env.NEXT_PUBLIC_API_URL ?? "/api";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? (process.env.NODE_ENV === "production" ? PROD_API_FALLBACK : "http://localhost:3001");
 
 function apiBases(): string[] {
   if (process.env.NODE_ENV === "production") {
