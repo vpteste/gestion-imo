@@ -21,10 +21,37 @@ for (const envPath of envCandidates) {
 async function bootstrap() {
   const corsOrigin = process.env.CORS_ORIGIN ?? "*";
   const port = Number(process.env.PORT ?? "3001");
+
+  const corsOrigins = corsOrigin === "*" || !corsOrigin.trim()
+    ? true
+    : corsOrigin.split(",").map((item) => item.trim()).filter(Boolean);
+
+  const allowedVercelOrigin = "https://gestion-imo-mu.vercel.app";
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     cors: {
-      origin: corsOrigin === "*" ? true : corsOrigin.split(",").map((item) => item.trim()),
+      origin:
+        corsOrigins === true
+          ? true
+          : (origin, callback) => {
+              if (!origin) {
+                return callback(null, true);
+              }
+
+              const normalizedOrigins = Array.isArray(corsOrigins)
+                ? corsOrigins
+                : [];
+
+              if (normalizedOrigins.includes(origin) || origin === allowedVercelOrigin) {
+                return callback(null, true);
+              }
+
+              return callback(
+                new Error(`Origin ${origin} not allowed by CORS`),
+                false,
+              );
+            },
       methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
     },
   });
 
